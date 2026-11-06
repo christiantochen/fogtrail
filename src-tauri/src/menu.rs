@@ -15,6 +15,7 @@ pub mod id {
     pub const SERVER_INFO: &str = "server-info";
     pub const QUICK_OPEN: &str = "quick-open";
     pub const FIND_VALUE: &str = "find-value";
+    pub const CHECK_UPDATES: &str = "check-updates";
 }
 
 pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
@@ -30,6 +31,8 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let server_info = item(id::SERVER_INFO, "Server Info", "CmdOrCtrl+I")?;
     let quick_open = item(id::QUICK_OPEN, "Quick Open…", "CmdOrCtrl+K")?;
     let find_value = item(id::FIND_VALUE, "Find in Value", "CmdOrCtrl+Shift+F")?;
+    let check_updates =
+        MenuItemBuilder::with_id(id::CHECK_UPDATES, "Check for Updates…").build(app)?;
 
     let mut menu = MenuBuilder::new(app);
 
@@ -38,6 +41,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     {
         let app_menu = SubmenuBuilder::new(app, "Fogtrail")
             .about(None)
+            .item(&check_updates)
             .separator()
             .services()
             .separator()
@@ -89,7 +93,10 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 
     #[cfg(not(target_os = "macos"))]
     {
-        let help = SubmenuBuilder::new(app, "Help").about(None).build()?;
+        let help = SubmenuBuilder::new(app, "Help")
+            .item(&check_updates)
+            .about(None)
+            .build()?;
         menu = menu.item(&help);
     }
 

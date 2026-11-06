@@ -1264,3 +1264,14 @@ select option {
   color: var(--secondary);
   font-size: 12.5px;
 }
+
+/* Self-update notices (the .toast base is above) */
+.toast__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.toast progress {
+  width: 100%;
+  accent-color: var(--amber);
+}

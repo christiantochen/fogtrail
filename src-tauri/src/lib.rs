@@ -17,6 +17,10 @@ pub fn run() {
     tauri::Builder::default()
         // Remembers the window's size and position between launches.
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        // Self-update: the updater checks GitHub for a signed release and
+        // installs it; the process plugin restarts the app afterwards.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .menu(menu::build)
         .on_menu_event(|app, event| {
             // The UI decides what each item does; see src/lib/menu.ts.

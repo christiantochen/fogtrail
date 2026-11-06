@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { listen } from "@tauri-apps/api/event";
 import { runMenuAction } from "../lib/menu";
 import { FIND_VALUE_EVENT } from "../lib/find";
+import { checkForUpdates } from "../lib/updater";
 import { useUi } from "../state/ui";
 
 /** Connects native menu clicks to the UI. Renders nothing. */
@@ -37,6 +38,7 @@ export function MenuBridge() {
       },
       quickOpen: () => ui().setQuickOpen(true),
       findValue: () => window.dispatchEvent(new Event(FIND_VALUE_EVENT)),
+      checkUpdates: () => void checkForUpdates(true),
       serverInfo: () => {
         if (!ui().connected) return;
         ui().setView(ui().view === "server" ? "keys" : "server");

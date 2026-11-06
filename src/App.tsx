@@ -10,6 +10,7 @@ import { QuickOpen } from "./components/QuickOpen";
 import { Resuming } from "./components/Resuming";
 import { Sidebar } from "./components/Sidebar";
 import { persistSession } from "./state/persist";
+import { UpdateToast } from "./components/UpdateToast";
 import { useUi } from "./state/ui";
 
 const queryClient = new QueryClient({
@@ -45,6 +46,7 @@ export default function App() {
         <MenuBridge />
         <CopyToast />
         <QuickOpen />
+        <UpdateToast />
         <div className="app">
           {resuming ? (
             <Resuming />
