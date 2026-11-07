@@ -3,3 +3,6 @@ contact_links:
   - name: Report a security vulnerability
     url: https://github.com/christiantochen/fogtrail/security/advisories/new
     about: Please report security problems privately, not in a public issue.
+  - name: Ask a question
+    url: https://github.com/christiantochen/fogtrail/discussions
+    about: Questions, ideas and how-to help belong in Discussions, not issues.
