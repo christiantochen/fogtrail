@@ -49,9 +49,32 @@ jobs:
             echo "NOTES_EOF"
           } >> "$GITHUB_OUTPUT"
 
+  # One job creates the draft, so the three builds below add to the same release
+  # instead of each making their own.
+  draft:
+    name: Create draft release
+    needs: verify
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.draft.outputs.release_id }}
+    steps:
+      - id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ needs.verify.outputs.notes }}
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq "[.[] | select(.tag_name == \"$RELEASE_TAG\" and .draft)][0].id // empty")
+          if [ -z "$id" ]; then
+            id=$(gh api "repos/$GITHUB_REPOSITORY/releases" -X POST \
+              -f tag_name="$RELEASE_TAG" -f name="Fogtrail $RELEASE_TAG" -f body="$NOTES" \
+              -F draft=true --jq .id)
+          fi
+          echo "release_id=$id" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build (${{ matrix.name }})
-    needs: verify
+    needs: [verify, draft]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -91,9 +114,25 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ env.RELEASE_TAG }}
-          releaseName: Fogtrail ${{ env.RELEASE_TAG }}
-          releaseBody: ${{ needs.verify.outputs.notes }}
-          releaseDraft: true
-          prerelease: false
+          releaseId: ${{ needs.draft.outputs.release_id }}
           args: --target ${{ matrix.target }}
+
+  # latest.json is what installed apps read; make sure every platform made it in.
+  check:
+    name: Check update manifest
+    needs: [draft, build]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.draft.outputs.release_id }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
+            --jq '.[] | select(.name == "latest.json") | .url' > url.txt
+          [ -s url.txt ] || { echo "::error::latest.json is missing from the release"; exit 1; }
+          gh api -H "Accept: application/octet-stream" "$(cat url.txt)" > latest.json
+          jq -r '.platforms | keys[]' latest.json
+          for p in darwin-aarch64 darwin-x86_64 windows-x86_64; do
+            jq -e --arg p "$p" '.platforms | keys | map(startswith($p)) | any' latest.json >/dev/null \
+              || { echo "::error::latest.json has no $p entry"; exit 1; }
+          done
