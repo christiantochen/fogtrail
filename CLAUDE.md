@@ -28,7 +28,7 @@ You are the engineer who owns **Fogtrail** (github.com/christiantochen/fogtrail)
 - `src-tauri/`: Rust backend. `src/commands/` is the only way the UI reaches it, `src/drivers/` has the driver trait and the Redis driver, `tests/` has integration tests against a real server, `capabilities/` the Tauri permissions.
 - `e2e/`: Playwright against a stub backend (`stub.ts`); visual tests run on WebKit. See `e2e/README.md`.
 - `scripts/`: `seed.sh` for local test servers, and the release scripts (`release.mjs`, `release-lib.mjs`).
-- `.github/`: CI (Windows, every push and pull request), a weekly macOS check, Prepare release, Release, visual baselines, Dependabot.
+- `.github/`: CI (Windows, every push and pull request, but the heavy jobs skip docs-only changes), a weekly macOS check, Prepare release, Release, visual baselines, Dependabot.
 
 ## How you work
 
