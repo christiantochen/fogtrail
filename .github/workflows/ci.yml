@@ -42,7 +42,8 @@ jobs:
           echo "code=$code" >> "$GITHUB_OUTPUT"
 
   check:
-    name: Check (${{ matrix.os }})
+    # A fixed name, so the check still reports under it when the job is skipped.
+    name: Check (windows-latest)
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
