@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in Fogtrail does not work as it should
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please do not paste passwords, connection URLs with
+        passwords, or real key contents. Security problems go through
+        [a private report](https://github.com/christiantochen/fogtrail/security/advisories/new).
+  - type: input
+    id: version
+    attributes:
+      label: Fogtrail version
+      description: Shown in the app's About window or on the release you installed.
+      placeholder: "0.2.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Server and version
+      description: What you are connecting to, and whether TLS or an ACL user is involved.
+      placeholder: "Redis 7.4, TLS on, ACL user"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the connection ...
+        2. Click ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Screenshots help. Blur anything private.
+    validations:
+      required: true
