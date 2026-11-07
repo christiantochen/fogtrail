@@ -1,6 +1,6 @@
 [package]
 name = "fogtrail"
-version = "0.2.2"
+version = "0.2.3"
 description = "A desktop data browser. Find your way through your data."
 authors = ["Christianto Chen"]
 license = "MIT OR Apache-2.0"
