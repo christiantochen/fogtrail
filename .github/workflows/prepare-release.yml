@@ -63,12 +63,12 @@ jobs:
           args=(--bump "$BUMP")
           [ -n "$DRY" ] && args+=("$DRY")
           [ -n "$MIN_HOURS" ] && args+=(--min-hours "$MIN_HOURS")
-          node scripts/release.mjs "${args[@]}" 2>notes.txt
+          node scripts/release.mjs "${args[@]}" 2>"$RUNNER_TEMP/plan.txt"
           {
             echo "### Release plan"
             echo
             echo '```'
-            cat notes.txt
+            cat "$RUNNER_TEMP/plan.txt"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
