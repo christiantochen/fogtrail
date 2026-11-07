@@ -18,7 +18,15 @@ See the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for detail
 
 ## Install
 
-Download the installer for your system from the [latest release](https://github.com/christiantochen/fogtrail/releases/latest).
+Download the installer for your system from the [latest release](https://github.com/christiantochen/fogtrail/releases/latest):
+
+| Your system                         | File                               |
+| ----------------------------------- | ---------------------------------- |
+| macOS, Apple Silicon (M1 and newer) | `Fogtrail_<version>_aarch64.dmg`   |
+| macOS, Intel                        | `Fogtrail_<version>_x64.dmg`       |
+| Windows                             | `Fogtrail_<version>_x64-setup.exe` |
+
+The `.tar.gz`, `.sig` and `latest.json` files in a release are for the in-app updater, not for you to download.
 
 Builds are not code-signed yet, so your OS warns on first launch:
 

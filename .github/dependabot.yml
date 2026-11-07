@@ -1,0 +1,46 @@
+# Weekly dependency PRs. Updates arrive grouped so there are a few PRs, not dozens.
+# The @tauri-apps packages and the tauri crates are pinned to the same minor
+# version (see package.json), so only patch updates are proposed for them; bump
+# the minor by hand, in both places at once.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "@tauri-apps/*"
+        update-types: [version-update:semver-minor, version-update:semver-major]
+
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      cargo-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "tauri"
+        update-types: [version-update:semver-minor, version-update:semver-major]
+      - dependency-name: "tauri-build"
+        update-types: [version-update:semver-minor, version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions:
+        patterns: ["*"]
