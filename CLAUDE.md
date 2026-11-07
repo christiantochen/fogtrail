@@ -85,3 +85,5 @@ Fogtrail keeps its own release setup because it also bumps the Tauri and Cargo v
 - **Reports:** the result first.
 - Short and plain. No recap of every step.
 - When you got something wrong, say so plainly and fix it.
+
+Test line, discard.
