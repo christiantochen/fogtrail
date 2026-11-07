@@ -42,17 +42,13 @@ jobs:
           echo "code=$code" >> "$GITHUB_OUTPUT"
 
   check:
-    # A fixed name, so the check still reports under it when the job is skipped.
+    # No matrix, so the name is the same whether the job runs or is skipped.
     name: Check (windows-latest)
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        # macOS runners are scarce, so macOS is checked weekly in macos.yml
-        # and at release time instead of on every push.
-        os: [windows-latest]
+    # macOS runners are scarce, so macOS is checked weekly in macos.yml
+    # and at release time instead of on every push.
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
 
