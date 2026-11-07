@@ -50,6 +50,9 @@ interface UiState {
   setQuickOpen: (open: boolean) => void;
   /** The About dialog is showing. */
   about: boolean;
+  /** We draw the title bar and menus ourselves (Windows), not the OS. Null until known. */
+  customTitleBar: boolean | null;
+  setCustomTitleBar: (on: boolean) => void;
   setAbout: (open: boolean) => void;
   /** Keys opened lately on this connection, newest first. */
   recent: string[];
@@ -96,6 +99,8 @@ export const useUi = create<UiState>((set) => ({
   connectedId: null,
   quickOpen: false,
   setQuickOpen: (quickOpen) => set({ quickOpen }),
+  customTitleBar: null,
+  setCustomTitleBar: (customTitleBar) => set({ customTitleBar }),
   about: false,
   setAbout: (about) => set({ about }),
   recent: [],

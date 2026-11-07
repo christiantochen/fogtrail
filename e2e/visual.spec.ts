@@ -112,6 +112,28 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page).toHaveScreenshot(`quick-open-${scheme}.png`);
     });
 
+    test("title bar", async ({ page }) => {
+      await page.addInitScript(() => {
+        (window as unknown as { __customTitleBar: boolean }).__customTitleBar =
+          true;
+      });
+      await page.reload();
+      await page.getByRole("heading", { name: "Pick a connection" }).waitFor();
+      await page
+        .getByRole("button", { name: "Connect", exact: true })
+        .first()
+        .click();
+      await page.getByText("config").first().click();
+      await page.locator("header.titlebar").waitFor();
+      await settle(page);
+      await expect(page).toHaveScreenshot(`titlebar-${scheme}.png`);
+      await page.getByRole("menuitem", { name: "File", exact: true }).click();
+      await page.getByRole("menu", { name: "File" }).waitFor();
+      await page.mouse.move(700, 500);
+      await settle(page);
+      await expect(page).toHaveScreenshot(`titlebar-menu-${scheme}.png`);
+    });
+
     test("about", async ({ page }) => {
       await page.waitForFunction(() => "__menu" in window);
       await page.evaluate(() =>

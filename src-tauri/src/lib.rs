@@ -2,11 +2,15 @@ mod commands;
 pub mod connections;
 pub mod drivers;
 pub mod error;
+// Windows draws its own title bar and menus (see src/components/TitleBar.tsx).
+#[cfg(not(windows))]
 mod menu;
 pub mod profiles;
 pub mod secrets;
 
-use tauri::{Emitter, Manager};
+#[cfg(not(windows))]
+use tauri::Emitter;
+use tauri::Manager;
 
 use connections::Connections;
 use profiles::ProfileStore;
@@ -14,18 +18,21 @@ use secrets::KeychainStore;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         // Remembers the window's size and position between launches.
         .plugin(tauri_plugin_window_state::Builder::default().build())
         // Self-update: the updater checks GitHub for a signed release and
         // installs it; the process plugin restarts the app afterwards.
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init())
-        .menu(menu::build)
-        .on_menu_event(|app, event| {
-            // The UI decides what each item does; see src/lib/menu.ts.
-            let _ = app.emit(menu::EVENT, event.id().as_ref());
-        })
+        .plugin(tauri_plugin_process::init());
+
+    #[cfg(not(windows))]
+    let builder = builder.menu(menu::build).on_menu_event(|app, event| {
+        // The UI decides what each item does; see src/lib/menu.ts.
+        let _ = app.emit(menu::EVENT, event.id().as_ref());
+    });
+
+    builder
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             let store = ProfileStore::new(dir.join("connections.json"));

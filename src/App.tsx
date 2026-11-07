@@ -11,6 +11,8 @@ import { Resuming } from "./components/Resuming";
 import { Sidebar } from "./components/Sidebar";
 import { persistSession } from "./state/persist";
 import { About } from "./components/About";
+import { TitleBar } from "./components/TitleBar";
+import { hasNativeFrame } from "./lib/windowApi";
 import { UpdateToast } from "./components/UpdateToast";
 import { useUi } from "./state/ui";
 
@@ -24,7 +26,15 @@ export default function App() {
   // A live connection with the connections screen open on top is not "browsing".
   const browsing = useUi((s) => s.connected !== null && !s.picking);
   const resuming = useUi((s) => s.resuming);
+  // Wait to know who draws the window frame, so nothing jumps when the bar appears.
+  const frameKnown = useUi((s) => s.customTitleBar !== null);
   useEffect(() => persistSession(), []);
+  // Windows has no OS frame (see tauri.windows.conf.json), so we draw the title bar.
+  useEffect(() => {
+    void hasNativeFrame().then((native) =>
+      useUi.getState().setCustomTitleBar(!native),
+    );
+  }, []);
 
   // Cmd/Ctrl+K opens quick open from anywhere.
   useEffect(() => {
@@ -49,21 +59,26 @@ export default function App() {
         <QuickOpen />
         <About />
         <UpdateToast />
-        <div className="app">
-          {resuming ? (
-            <Resuming />
-          ) : browsing ? (
-            <>
-              <Sidebar />
-              <Main />
-            </>
-          ) : (
-            <>
-              <ConnectionsSidebar />
-              <ConnectionsMain />
-            </>
-          )}
-        </div>
+        {frameKnown && (
+          <div className="shell">
+            <TitleBar />
+            <div className="app">
+              {resuming ? (
+                <Resuming />
+              ) : browsing ? (
+                <>
+                  <Sidebar />
+                  <Main />
+                </>
+              ) : (
+                <>
+                  <ConnectionsSidebar />
+                  <ConnectionsMain />
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </QueryClientProvider>
     </ErrorBoundary>
   );

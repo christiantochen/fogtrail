@@ -591,3 +591,137 @@ test.describe("about", () => {
     await expect(dialog(page)).toHaveCount(0);
   });
 });
+
+test.describe("title bar (Windows)", () => {
+  const bar = (page: Page) => page.locator("header.titlebar");
+  const open = async (page: Page, custom = true) => {
+    if (custom)
+      await page.addInitScript(() => {
+        (window as unknown as { __customTitleBar: boolean }).__customTitleBar =
+          true;
+      });
+    await stubBackend(page);
+    await page.goto("/");
+    await page.getByRole("heading", { name: "Pick a connection" }).waitFor();
+  };
+  const win = (page: Page) =>
+    page.evaluate(
+      () => (window as unknown as { __win?: string[] }).__win ?? [],
+    );
+
+  test("a native frame means no custom bar", async ({ page }) => {
+    await open(page, false);
+    await expect(bar(page)).toHaveCount(0);
+  });
+
+  test("draws the menus, a search box and window buttons", async ({ page }) => {
+    await open(page);
+    for (const m of ["File", "Edit", "View", "Window", "Help"])
+      await expect(
+        bar(page).getByRole("menuitem", { name: m, exact: true }),
+      ).toBeVisible();
+    await expect(
+      bar(page).getByRole("button", { name: "Quick open" }),
+    ).toContainText("Search keys and connections");
+    for (const b of ["Minimize", "Maximize", "Close"])
+      await expect(bar(page).getByRole("button", { name: b })).toBeVisible();
+  });
+
+  test("a menu item runs its action", async ({ page }) => {
+    await open(page);
+    await bar(page)
+      .getByRole("menuitem", { name: "File", exact: true })
+      .click();
+    await page.getByRole("menuitem", { name: /New Connection/ }).click();
+    await expect(
+      page.getByRole("heading", { name: "New connection" }),
+    ).toBeVisible();
+    await expect(page.getByRole("menu")).toHaveCount(0);
+  });
+
+  test("hovering across the bar switches the open menu", async ({ page }) => {
+    await open(page);
+    await bar(page)
+      .getByRole("menuitem", { name: "File", exact: true })
+      .click();
+    await bar(page)
+      .getByRole("menuitem", { name: "View", exact: true })
+      .hover();
+    await expect(page.getByRole("menu", { name: "View" })).toBeVisible();
+    await expect(page.getByRole("menu", { name: "File" })).toHaveCount(0);
+  });
+
+  test("Alt+F opens File and the keyboard drives it", async ({ page }) => {
+    await open(page);
+    await page.keyboard.press("Alt+F");
+    await expect(page.getByRole("menu", { name: "File" })).toBeVisible();
+    await page.keyboard.press("ArrowRight");
+    await expect(page.getByRole("menu", { name: "Edit" })).toBeVisible();
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    // The second File item is Connections: with no connection it shows the picker.
+    await expect(page.getByRole("menu")).toHaveCount(0);
+  });
+
+  test("Escape and clicking away close a menu", async ({ page }) => {
+    await open(page);
+    await page.keyboard.press("Alt+V");
+    await expect(page.getByRole("menu", { name: "View" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await page.keyboard.press("Alt+H");
+    await expect(page.getByRole("menu", { name: "Help" })).toBeVisible();
+    await page.mouse.click(600, 400);
+    await expect(page.getByRole("menu")).toHaveCount(0);
+  });
+
+  test("Help > About opens the About dialog", async ({ page }) => {
+    await open(page);
+    await page.keyboard.press("Alt+H");
+    await page.getByRole("menuitem", { name: "About Fogtrail" }).click();
+    await expect(
+      page.getByRole("dialog", { name: "About Fogtrail" }),
+    ).toBeVisible();
+  });
+
+  test("the search box opens Quick open", async ({ page }) => {
+    await open(page);
+    await bar(page).getByRole("button", { name: "Quick open" }).click();
+    await expect(
+      page.getByRole("dialog", { name: "Quick open" }),
+    ).toBeVisible();
+  });
+
+  test("shortcuts the native menu gave still work", async ({ page }) => {
+    await open(page);
+    await page.keyboard.press("ControlOrMeta+N");
+    await expect(
+      page.getByRole("heading", { name: "New connection" }),
+    ).toBeVisible();
+  });
+
+  test("the window buttons ask the window", async ({ page }) => {
+    await open(page);
+    await bar(page).getByRole("button", { name: "Minimize" }).click();
+    await bar(page).getByRole("button", { name: "Maximize" }).click();
+    await bar(page).getByRole("button", { name: "Close" }).click();
+    expect(await win(page)).toEqual(["minimize", "toggle_maximize", "close"]);
+  });
+
+  test("shows the connection and key once browsing", async ({ page }) => {
+    await open(page);
+    await page
+      .getByRole("button", { name: "Connect", exact: true })
+      .first()
+      .click();
+    await page.getByText("config").first().waitFor();
+    await expect(
+      bar(page).getByRole("button", { name: "Quick open" }),
+    ).toContainText("eCMS Standard - UAT");
+    await page.getByText("config").first().click();
+    await expect(
+      bar(page).getByRole("button", { name: "Quick open" }),
+    ).toContainText("› config");
+  });
+});

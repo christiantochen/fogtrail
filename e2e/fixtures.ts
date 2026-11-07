@@ -12,13 +12,20 @@ export const test = base.extend<{ layoutGuard: void }>({
       await page.addInitScript(() => {
         const w = window as unknown as { __layoutViolations: string[] };
         w.__layoutViolations = [];
+        let firstTop: number | null = null;
         const check = () => {
           const app = document.querySelector(".app");
           if (app) {
             const r = app.getBoundingClientRect();
             const de = document.documentElement;
+            // The app starts right under the title bar (Windows) or at the top,
+            // and must never move from where it first appeared.
+            const barHeight =
+              document.querySelector(".titlebar")?.getBoundingClientRect()
+                .height ?? 0;
+            firstTop ??= r.top;
             const problem =
-              r.top !== 0 || r.left !== 0
+              r.top !== barHeight || r.top !== firstTop || r.left !== 0
                 ? `app moved to ${r.left},${r.top}`
                 : de.scrollHeight > window.innerHeight
                   ? `page scrolls (${de.scrollHeight} > ${window.innerHeight})`
