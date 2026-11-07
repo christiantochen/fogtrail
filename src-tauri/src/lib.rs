@@ -19,8 +19,17 @@ use secrets::KeychainStore;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
-        // Remembers the window's size and position between launches.
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        // Remembers the window's size and position between launches. Not whether it
+        // has a frame: Windows draws its own title bar (tauri.windows.conf.json), and
+        // a frame saved by an older version would bring the OS one back.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::all()
+                        - tauri_plugin_window_state::StateFlags::DECORATIONS,
+                )
+                .build(),
+        )
         // Self-update: the updater checks GitHub for a signed release and
         // installs it; the process plugin restarts the app afterwards.
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -34,6 +43,11 @@ pub fn run() {
 
     builder
         .setup(|app| {
+            // Windows draws its own title bar; make sure no OS frame is left over.
+            #[cfg(windows)]
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_decorations(false);
+            }
             let dir = app.path().app_data_dir()?;
             let store = ProfileStore::new(dir.join("connections.json"));
             app.manage(Connections::new(store, Box::new(KeychainStore)));
