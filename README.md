@@ -2,19 +2,15 @@
 
 A desktop data browser for macOS and Windows. Find your way through your data.
 
+[![Latest release](https://img.shields.io/github/v/release/christiantochen/fogtrail)](https://github.com/christiantochen/fogtrail/releases) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#license)
+
+Downloads: https://tools.christiantochen.com/fogtrail
+
+## What it does
+
 Redis (and Redis-compatible servers such as Valkey and Dragonfly) comes first. The backend is built around a driver trait so other data sources can be added later.
 
 **Status:** Phase 4. Save connection profiles (host, port, ACL user, database, TLS) with passwords in your system keychain, then browse every common key type read-only: strings (with JSON colors), hashes, lists, sets, sorted sets and streams (with consumer groups). Search runs on the server, the folder delimiter is configurable, you can switch databases, and a Server info panel shows version, memory, clients and keys per database. Valkey and Dragonfly are detected on connect.
-
-## Prerequisites
-
-- Rust (via [rustup](https://rustup.rs)), 1.85 or newer
-- Node.js 24 or newer (an `.nvmrc` is included)
-- macOS: Xcode Command Line Tools
-- Windows: MSVC Build Tools and WebView2 (preinstalled on Windows 10/11)
-- Docker, for the local test servers
-
-See the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for details.
 
 ## Install
 
@@ -33,7 +29,9 @@ Builds are not code-signed yet, so your OS warns on first launch:
 - **macOS:** open the `.dmg`, drag Fogtrail to Applications, then right-click it and choose Open. If macOS says the app is damaged, run `xattr -dr com.apple.quarantine /Applications/Fogtrail.app`.
 - **Windows:** run the installer. If SmartScreen appears, choose More info, then Run anyway.
 
-## Getting started
+## Develop
+
+Needs Node.js 24 or newer (an `.nvmrc` is included), Rust 1.85 or newer (via [rustup](https://rustup.rs)) and Docker for the local test servers. On macOS you also need the Xcode Command Line Tools; on Windows, the MSVC Build Tools and WebView2 (preinstalled on Windows 10/11). See the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for details.
 
 ```sh
 npm install
@@ -46,23 +44,6 @@ Local Redis, Valkey and Dragonfly servers for testing (ports 6379, 6380 and 6381
 docker compose up -d
 scripts/seed.sh            # or: scripts/seed.sh valkey | dragonfly
 ```
-
-## Keyboard shortcuts
-
-Use Cmd on macOS and Ctrl on Windows.
-
-| Shortcut             | Action                                            |
-| -------------------- | ------------------------------------------------- |
-| Cmd/Ctrl + F         | Search keys (or press `/`)                        |
-| Cmd/Ctrl + R         | Refresh keys, value and server info               |
-| Cmd/Ctrl + I         | Show or hide server info                          |
-| Cmd/Ctrl + N         | New connection                                    |
-| Cmd/Ctrl + Shift + O | Back to connections                               |
-| Arrow keys           | Move through the key list, open and close folders |
-
-The window remembers its size and position between launches.
-
-## Scripts
 
 | Command                | What it does                           |
 | ---------------------- | -------------------------------------- |
@@ -82,21 +63,30 @@ Backend integration tests need a real server and skip without one. They flush th
 FOGTRAIL_TEST_REDIS_URL=redis://127.0.0.1:6379/15 cargo test
 ```
 
-## Layout
+## Configuration
 
-```
-src/            React + TypeScript UI
-  api/          typed wrappers around Tauri commands, TanStack Query hooks
-  lib/          pure helpers (key tree, formatting), unit tested
-  state/        UI state (Zustand)
-  components/   sidebar, key tree, value viewers
-src-tauri/      Rust backend
-  src/commands/ Tauri commands, the only way the UI reaches the backend
-  src/drivers/  Driver trait and the Redis driver
-  tests/        integration tests against a real server
-  capabilities/ Tauri permission files
-scripts/        dev helpers
-```
+| Name                                 | Kind     | Where it's set               | What it's for                                             |
+| ------------------------------------ | -------- | ---------------------------- | --------------------------------------------------------- |
+| `TAURI_SIGNING_PRIVATE_KEY`          | secret   | GitHub repo secret           | Signs the auto-update files                               |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | secret   | GitHub repo secret           | Password for that key                                     |
+| `FOGTRAIL_TEST_REDIS_URL`            | variable | your shell, for `cargo test` | Points the backend integration tests at a throwaway Redis |
+
+Names only. Values never go in this repo.
+
+## Keyboard shortcuts
+
+Use Cmd on macOS and Ctrl on Windows.
+
+| Shortcut             | Action                                            |
+| -------------------- | ------------------------------------------------- |
+| Cmd/Ctrl + F         | Search keys (or press `/`)                        |
+| Cmd/Ctrl + R         | Refresh keys, value and server info               |
+| Cmd/Ctrl + I         | Show or hide server info                          |
+| Cmd/Ctrl + N         | New connection                                    |
+| Cmd/Ctrl + Shift + O | Back to connections                               |
+| Arrow keys           | Move through the key list, open and close folders |
+
+The window remembers its size and position between launches.
 
 ## Security
 
@@ -114,7 +104,7 @@ scripts/        dev helpers
 4. Desktop polish: menus, shortcuts, window state, hardening (done)
 5. Release pipeline, auto-update, cluster mode
 
-## Releasing
+## Releases
 
 Releases are cut from commit messages ([Conventional Commits](https://www.conventionalcommits.org)):
 
@@ -132,6 +122,22 @@ After CI passes on `main`, the **Prepare release** workflow reads the commits si
 To release on demand, for example after a pile of housekeeping, open Actions, choose **Prepare release**, Run workflow, and pick `patch`, `minor` or `major` (or `auto`). Tick **dry run** to see the plan without tagging anything. From a terminal: `gh workflow run prepare-release.yml -f bump=patch`.
 
 Locally, `npm run release -- --dry-run` prints the next version and changelog entry without changing files.
+
+## Layout
+
+```
+src/            React + TypeScript UI
+  api/          typed wrappers around Tauri commands, TanStack Query hooks
+  lib/          pure helpers (key tree, formatting), unit tested
+  state/        UI state (Zustand)
+  components/   sidebar, key tree, value viewers
+src-tauri/      Rust backend
+  src/commands/ Tauri commands, the only way the UI reaches the backend
+  src/drivers/  Driver trait and the Redis driver
+  tests/        integration tests against a real server
+  capabilities/ Tauri permission files
+scripts/        dev helpers
+```
 
 ## License
 
