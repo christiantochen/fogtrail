@@ -10,7 +10,7 @@ Downloads: https://tools.christiantochen.com/fogtrail
 
 Redis (and Redis-compatible servers such as Valkey and Dragonfly) comes first. The backend is built around a driver trait so other data sources can be added later.
 
-**Status:** Phase 4. Save connection profiles (host, port, ACL user, database, TLS) with passwords in your system keychain, then browse every common key type read-only: strings (with JSON colors), hashes, lists, sets, sorted sets and streams (with consumer groups). Search runs on the server, the folder delimiter is configurable, you can switch databases, and a Server info panel shows version, memory, clients and keys per database. Valkey and Dragonfly are detected on connect.
+Save connection profiles (host, port, ACL user, database, TLS) with passwords in your system keychain, then browse every common key type read-only: strings (with JSON colors), hashes, lists, sets, sorted sets and streams (with consumer groups). Search runs on the server, the folder delimiter is configurable, you can switch databases, and a Server info panel shows version, memory, clients and keys per database. Valkey and Dragonfly are detected on connect.
 
 ## Install
 
@@ -94,15 +94,6 @@ The window remembers its size and position between launches.
 - Passwords live in the OS keychain, never in the saved connections file.
 - The webview runs under a strict content security policy: scripts, styles and fonts from the app only, no remote content, and IPC as the only connection it can open.
 - For servers you don't fully trust the credentials of, connect with an ACL user limited to reading, for example `ACL SETUSER fogtrail on >password ~* +@read +info +scan +type +ttl +memory|usage +xinfo -@dangerous`.
-
-## Roadmap
-
-0. Setup (done)
-1. First end-to-end slice: scan keys, show a value (done)
-2. Connection profiles, keychain passwords, TLS and ACL users (done)
-3. Browsing UX: streams, server info, database switcher, search (done)
-4. Desktop polish: menus, shortcuts, window state, hardening (done)
-5. Release pipeline, auto-update, cluster mode
 
 ## Releases
 
