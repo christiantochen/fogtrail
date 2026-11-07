@@ -1,0 +1,13 @@
+fatal: No names found, cannot describe anything.
+0.2.0 -> 0.2.1 (patch, 2 commits)
+
+## v0.2.1 (2026-11-07)
+
+### Features
+
+- update the app from inside it, with signed releases
+
+### Maintenance
+
+- Add Tauri signing key env template
+
