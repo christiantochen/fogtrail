@@ -105,6 +105,11 @@ export function prependChangelog(existing, entry) {
   );
 }
 
+/** True when the changelog already has a section for this version (written by hand). */
+export function hasSection(changelog, version) {
+  return sectionFor(changelog, version) !== "";
+}
+
 /** The text of one version's section, for the release notes. */
 export function sectionFor(changelog, version) {
   const lines = changelog.split("\n");

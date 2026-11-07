@@ -4,6 +4,7 @@ import {
   changelogEntry,
   decideBump,
   isNoise,
+  hasSection,
   parseCommit,
   prependChangelog,
   sectionFor,
@@ -126,6 +127,8 @@ describe("changelog", () => {
     );
     expect(sectionFor(log, "0.3.0")).toBe("### Features\n\n- a");
     expect(sectionFor(log, "9.9.9")).toBe("");
+    expect(hasSection(log, "0.3.0")).toBe(true);
+    expect(hasSection(log, "9.9.9")).toBe(false);
   });
 });
 

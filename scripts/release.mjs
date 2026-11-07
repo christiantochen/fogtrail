@@ -19,6 +19,7 @@ import {
   VERSION_FILES,
   bumpVersion,
   changelogEntry,
+  hasSection,
   decideBump,
   isNoise,
   parseCommit,
@@ -118,6 +119,8 @@ if (level === null) {
 const version = bumpVersion(current, level);
 const date = new Date().toISOString().slice(0, 10);
 const entry = changelogEntry(version, date, commits);
+const handWritten =
+  existsSync("CHANGELOG.md") && hasSection(read("CHANGELOG.md"), version);
 
 if (!flag("dry-run")) {
   const files = Object.fromEntries(VERSION_FILES.map((f) => [f, read(f)]));
@@ -125,17 +128,15 @@ if (!flag("dry-run")) {
   for (const [f, text] of Object.entries(writeVersion(files, version))) {
     if (text !== files[f]) writeFileSync(f, text);
   }
-  writeFileSync(
-    "CHANGELOG.md",
-    prependChangelog(
-      existsSync("CHANGELOG.md") ? read("CHANGELOG.md") : "",
-      entry,
-    ),
-  );
+  const log = existsSync("CHANGELOG.md") ? read("CHANGELOG.md") : "";
+  // A section written by hand for this version (a first release, say) is kept as is.
+  if (!hasSection(log, version)) {
+    writeFileSync("CHANGELOG.md", prependChangelog(log, entry));
+  }
 }
 
 console.error(
-  `${flag("dry-run") ? "[dry run] " : ""}${current} -> ${version} (${level}, ${commits.length} commits)\n\n${entry}`,
+  `${flag("dry-run") ? "[dry run] " : ""}${current} -> ${version} (${level}, ${commits.length} commits)${handWritten ? "; using the CHANGELOG.md section already written for it" : ""}\n\n${entry}`,
 );
 finish({
   released: true,
