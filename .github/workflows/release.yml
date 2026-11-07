@@ -41,11 +41,21 @@ jobs:
         run: |
           text=$(node scripts/release.mjs --notes "$RELEASE_TAG")
           [ -n "$text" ] || text="See the assets below to download."
+          v="${RELEASE_TAG#v}"
           {
             echo "notes<<NOTES_EOF"
-            echo "$text"
+            echo "### Download"
             echo
-            echo "These builds are not code-signed yet, see the README for first-launch steps."
+            echo "| Your system | File |"
+            echo "| --- | --- |"
+            echo "| macOS, Apple Silicon (M1 and newer) | \`Fogtrail_${v}_aarch64.dmg\` |"
+            echo "| macOS, Intel | \`Fogtrail_${v}_x64.dmg\` |"
+            echo "| Windows | \`Fogtrail_${v}_x64-setup.exe\` |"
+            echo
+            echo "The other files (\`.tar.gz\`, \`.sig\`, \`latest.json\`) are used by the in-app updater."
+            echo "Builds are not code-signed yet, see the README for first-launch steps."
+            echo
+            echo "$text"
             echo "NOTES_EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -83,12 +93,15 @@ jobs:
           - name: macOS (Apple Silicon)
             os: macos-latest
             target: aarch64-apple-darwin
+            bundles: app,dmg
           - name: macOS (Intel)
             os: macos-latest
             target: x86_64-apple-darwin
+            bundles: app,dmg
           - name: Windows
             os: windows-latest
             target: x86_64-pc-windows-msvc
+            bundles: nsis
     steps:
       - uses: actions/checkout@v5
 
@@ -115,7 +128,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.draft.outputs.release_id }}
-          args: --target ${{ matrix.target }}
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
   # latest.json is what installed apps read; make sure every platform made it in.
   check:
