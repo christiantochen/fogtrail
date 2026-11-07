@@ -10,6 +10,7 @@ import { QuickOpen } from "./components/QuickOpen";
 import { Resuming } from "./components/Resuming";
 import { Sidebar } from "./components/Sidebar";
 import { persistSession } from "./state/persist";
+import { About } from "./components/About";
 import { UpdateToast } from "./components/UpdateToast";
 import { useUi } from "./state/ui";
 
@@ -46,6 +47,7 @@ export default function App() {
         <MenuBridge />
         <CopyToast />
         <QuickOpen />
+        <About />
         <UpdateToast />
         <div className="app">
           {resuming ? (

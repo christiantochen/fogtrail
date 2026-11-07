@@ -8,6 +8,7 @@ export interface MenuHandlers {
   quickOpen: () => void;
   findValue: () => void;
   checkUpdates: () => void;
+  about: () => void;
 }
 
 // A Map, so ids like "toString" can't match something inherited from Object.
@@ -20,6 +21,7 @@ const ROUTES = new Map<string, keyof MenuHandlers>([
   ["quick-open", "quickOpen"],
   ["find-value", "findValue"],
   ["check-updates", "checkUpdates"],
+  ["about", "about"],
 ]);
 
 /** Runs the handler for a menu item id. Returns false for ids it doesn't know (such as predefined items). */

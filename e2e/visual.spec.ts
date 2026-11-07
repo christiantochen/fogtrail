@@ -112,6 +112,17 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page).toHaveScreenshot(`quick-open-${scheme}.png`);
     });
 
+    test("about", async ({ page }) => {
+      await page.waitForFunction(() => "__menu" in window);
+      await page.evaluate(() =>
+        (window as unknown as { __menu: (id: string) => void }).__menu("about"),
+      );
+      await page.getByRole("dialog", { name: "About Fogtrail" }).waitFor();
+      await page.getByText("Version 0.2.1").waitFor();
+      await settle(page);
+      await expect(page).toHaveScreenshot(`about-${scheme}.png`);
+    });
+
     test("key about to expire", async ({ page }) => {
       await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
       await page

@@ -39,9 +39,26 @@ export async function stubBackend(page: Page, extraKeys: string[] = []) {
         "jobs/weekly",
       ];
       (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
-        transformCallback: () => 0,
+        // Menu clicks arrive as events; menu(id) in a test plays one of them.
+        transformCallback: (cb: (e: unknown) => void) => {
+          const w = window as unknown as { __cbs?: ((e: unknown) => void)[] };
+          (w.__cbs ??= []).push(cb);
+          return w.__cbs.length - 1;
+        },
         invoke: async (cmd: string, args: { id?: string; name?: string }) => {
           switch (cmd) {
+            case "plugin:event|listen": {
+              const w = window as unknown as {
+                __cbs: ((e: unknown) => void)[];
+                __menu?: (id: string) => void;
+              };
+              const handler = (args as unknown as { handler: number }).handler;
+              w.__menu = (id) =>
+                w.__cbs[handler]({ event: "menu", id: 0, payload: id });
+              return 0;
+            }
+            case "plugin:app|version":
+              return "0.2.1";
             case "list_profiles":
               return profiles;
             case "connect": {

@@ -10,6 +10,7 @@ const handlers = (): MenuHandlers => ({
   quickOpen: vi.fn(),
   findValue: vi.fn(),
   checkUpdates: vi.fn(),
+  about: vi.fn(),
 });
 
 describe("runMenuAction", () => {
@@ -23,6 +24,7 @@ describe("runMenuAction", () => {
       ["quick-open", "quickOpen"],
       ["find-value", "findValue"],
       ["check-updates", "checkUpdates"],
+      ["about", "about"],
     ];
     for (const [id, name] of ids) {
       const h = handlers();

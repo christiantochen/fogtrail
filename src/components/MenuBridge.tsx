@@ -39,6 +39,7 @@ export function MenuBridge() {
       quickOpen: () => ui().setQuickOpen(true),
       findValue: () => window.dispatchEvent(new Event(FIND_VALUE_EVENT)),
       checkUpdates: () => void checkForUpdates(true),
+      about: () => ui().setAbout(true),
       serverInfo: () => {
         if (!ui().connected) return;
         ui().setView(ui().view === "server" ? "keys" : "server");

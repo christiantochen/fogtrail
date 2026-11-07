@@ -48,6 +48,9 @@ interface UiState {
   /** Quick open (Cmd/Ctrl+K) is showing. */
   quickOpen: boolean;
   setQuickOpen: (open: boolean) => void;
+  /** The About dialog is showing. */
+  about: boolean;
+  setAbout: (open: boolean) => void;
   /** Keys opened lately on this connection, newest first. */
   recent: string[];
   /** Keys pinned on this connection, in the order they were pinned. */
@@ -93,6 +96,8 @@ export const useUi = create<UiState>((set) => ({
   connectedId: null,
   quickOpen: false,
   setQuickOpen: (quickOpen) => set({ quickOpen }),
+  about: false,
+  setAbout: (about) => set({ about }),
   recent: [],
   pins: [],
   refreshEvery: loadRefresh(),

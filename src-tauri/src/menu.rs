@@ -16,6 +16,7 @@ pub mod id {
     pub const QUICK_OPEN: &str = "quick-open";
     pub const FIND_VALUE: &str = "find-value";
     pub const CHECK_UPDATES: &str = "check-updates";
+    pub const ABOUT: &str = "about";
 }
 
 pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
@@ -31,6 +32,10 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let server_info = item(id::SERVER_INFO, "Server Info", "CmdOrCtrl+I")?;
     let quick_open = item(id::QUICK_OPEN, "Quick Open…", "CmdOrCtrl+K")?;
     let find_value = item(id::FIND_VALUE, "Find in Value", "CmdOrCtrl+Shift+F")?;
+    // macOS has a working built-in About window. Windows has the menu item but it
+    // does nothing, so there the item opens our own dialog.
+    #[cfg(not(target_os = "macos"))]
+    let about = MenuItemBuilder::with_id(id::ABOUT, "About Fogtrail").build(app)?;
     let check_updates =
         MenuItemBuilder::with_id(id::CHECK_UPDATES, "Check for Updates…").build(app)?;
 
@@ -95,7 +100,8 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     {
         let help = SubmenuBuilder::new(app, "Help")
             .item(&check_updates)
-            .about(None)
+            .separator()
+            .item(&about)
             .build()?;
         menu = menu.item(&help);
     }

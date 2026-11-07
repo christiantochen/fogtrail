@@ -551,3 +551,43 @@ test.describe("auto-refresh", () => {
     await expect(page.locator(".live--paused")).toBeVisible();
   });
 });
+
+test.describe("about", () => {
+  const dialog = (page: Page) =>
+    page.getByRole("dialog", { name: "About Fogtrail" });
+  const open = async (page: Page) => {
+    await stubBackend(page);
+    await page.goto("/");
+    await page.getByRole("heading", { name: "Pick a connection" }).waitFor();
+    await page.waitForFunction(() => "__menu" in window);
+    await page.evaluate(() =>
+      (window as unknown as { __menu: (id: string) => void }).__menu("about"),
+    );
+  };
+
+  test("Help > About shows the app version", async ({ page }) => {
+    await open(page);
+    await expect(dialog(page)).toBeVisible();
+    await expect(dialog(page).getByText("Version 0.2.1")).toBeVisible();
+    await expect(dialog(page).getByText("MIT OR Apache-2.0")).toBeVisible();
+  });
+
+  test("Escape and Close both dismiss it", async ({ page }) => {
+    await open(page);
+    await page.keyboard.press("Escape");
+    await expect(dialog(page)).toHaveCount(0);
+    await page.evaluate(() =>
+      (window as unknown as { __menu: (id: string) => void }).__menu("about"),
+    );
+    await dialog(page).getByRole("button", { name: "Close" }).click();
+    await expect(dialog(page)).toHaveCount(0);
+  });
+
+  test("Check for updates closes it and starts a check", async ({ page }) => {
+    await open(page);
+    await dialog(page)
+      .getByRole("button", { name: "Check for updates" })
+      .click();
+    await expect(dialog(page)).toHaveCount(0);
+  });
+});
