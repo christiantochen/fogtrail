@@ -1,0 +1,553 @@
+import type { Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
+import { stubBackend } from "./stub";
+
+// Specs for the quality-of-life work planned after v0.2.0. They are marked
+// fixme so CI stays green; each one is switched on (fixme removed) in the same
+// change that builds its feature.
+
+const keys = [
+  "shop:cart:123",
+  "shop:cart:124",
+  "shop/orders/7",
+  "shop/orders/9",
+  "config",
+];
+
+async function openBrowse(page: Page) {
+  await stubBackend(page, keys);
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Connect", exact: true })
+    .first()
+    .click();
+  await page.getByLabel("Switch connection").waitFor();
+}
+
+// Records what the app writes to the clipboard, which WebKit won't let a test read.
+async function captureClipboard(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __copied: string[] };
+    w.__copied = [];
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: async (t: string) => void w.__copied.push(t) },
+      configurable: true,
+    });
+  });
+}
+const copied = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __copied: string[] }).__copied);
+
+test.describe("split on several characters", () => {
+  test("':/' puts keys with either separator in one tree", async ({ page }) => {
+    await openBrowse(page);
+    await page.getByLabel("Folder delimiter").fill(":/");
+    const tree = page.getByRole("tree", { name: "Keys" });
+    await expect(tree.getByRole("treeitem", { name: /^shop/ })).toHaveCount(1);
+    await tree.getByRole("button", { name: /^shop/ }).click();
+    await expect(tree.getByRole("button", { name: /^cart/ })).toBeVisible();
+    await expect(tree.getByRole("button", { name: /^orders/ })).toBeVisible();
+  });
+
+  test("a single ':' keeps '/' keys as plain names", async ({ page }) => {
+    await openBrowse(page);
+    await page.getByLabel("Folder delimiter").fill(":");
+    await expect(
+      page.getByRole("button", { name: "shop/orders/9" }),
+    ).toBeVisible();
+  });
+});
+
+test.describe("copying", () => {
+  test("right-click copies the key name and confirms it", async ({ page }) => {
+    await captureClipboard(page);
+    await openBrowse(page);
+    await page.getByLabel("Folder delimiter").fill("");
+    await page
+      .getByRole("button", { name: "shop/orders/9" })
+      .click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Copy key name" }).click();
+    expect(await copied(page)).toEqual(["shop/orders/9"]);
+    await expect(page.getByRole("status")).toContainText("Copied");
+  });
+
+  test("the notice floats and does not move the page", async ({ page }) => {
+    await captureClipboard(page);
+    await openBrowse(page);
+    await page.getByLabel("Folder delimiter").fill("");
+    await page.getByRole("button", { name: "config" }).click();
+    const top = () =>
+      page.locator(".app").evaluate((el) => el.getBoundingClientRect().top);
+    const before = await top();
+    await page.getByRole("button", { name: "Copy key" }).click();
+    await expect(page.getByRole("status")).toBeVisible();
+    await expect(page.getByRole("status")).toHaveCSS("position", "fixed");
+    expect(await top()).toBe(before);
+  });
+
+  test("Shift+Cmd/Ctrl+C copies the selected key", async ({ page }) => {
+    await captureClipboard(page);
+    await openBrowse(page);
+    await page.getByLabel("Folder delimiter").fill("");
+    await page.getByRole("button", { name: "config" }).click();
+    await page.keyboard.press("ControlOrMeta+Shift+C");
+    expect(await copied(page)).toEqual(["config"]);
+  });
+
+  test("the Copy buttons confirm too", async ({ page }) => {
+    await captureClipboard(page);
+    await openBrowse(page);
+    await page.getByLabel("Folder delimiter").fill("");
+    await page.getByRole("button", { name: "config" }).click();
+    await page.getByRole("button", { name: "Copy value" }).click();
+    expect(await copied(page)).toEqual(["hello world"]);
+    await expect(page.getByRole("status")).toContainText("Copied");
+  });
+});
+
+test.describe("resume on launch", () => {
+  test("reopening goes back to the same connection, folder and key", async ({
+    page,
+  }) => {
+    await openBrowse(page);
+    await page.locator('button.row[data-folder="shop"]').click();
+    await page.locator('button.row[data-folder="shop:cart"]').click();
+    await page.getByRole("button", { name: "123" }).click();
+    await page.reload();
+    await expect(page.getByLabel("Switch connection")).toHaveValue("1");
+    await expect(
+      page.getByRole("heading", { name: "shop:cart:123" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "123" })).toBeVisible();
+  });
+
+  test("a server that is down lands on the picker with the reason", async ({
+    page,
+  }) => {
+    await openBrowse(page);
+    await page.addInitScript(() => {
+      (window as unknown as { __FAIL_CONNECT__: boolean }).__FAIL_CONNECT__ =
+        true;
+    });
+    await page.reload();
+    await expect(
+      page.getByRole("heading", { name: "Pick a connection" }),
+    ).toBeVisible();
+    await expect(page.getByRole("alert")).toContainText("Connection refused");
+  });
+
+  test("Choose another cancels the automatic reconnect", async ({ page }) => {
+    await openBrowse(page);
+    await page.addInitScript(() => {
+      (window as unknown as { __CONNECT_DELAY__: number }).__CONNECT_DELAY__ =
+        1500;
+    });
+    await page.reload();
+    await page.getByRole("button", { name: "Choose another" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Pick a connection" }),
+    ).toBeVisible();
+    // The late connection must not pull the user into browsing afterwards.
+    await page.waitForTimeout(2000);
+    await expect(
+      page.getByRole("heading", { name: "Pick a connection" }),
+    ).toBeVisible();
+  });
+
+  test("disconnecting on purpose is not resumed", async ({ page }) => {
+    await openBrowse(page);
+    await page.getByRole("button", { name: "Manage" }).click();
+    await page.getByRole("button", { name: "Disconnect" }).click();
+    await page.reload();
+    await expect(
+      page.getByRole("heading", { name: "Pick a connection" }),
+    ).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  });
+});
+
+test.describe("quick open", () => {
+  const dialog = (page: Page) =>
+    page.getByRole("dialog", { name: "Quick open" });
+
+  test("Cmd/Ctrl+K finds a key by a few letters and reveals it", async ({
+    page,
+  }) => {
+    await openBrowse(page);
+    await page.keyboard.press("ControlOrMeta+K");
+    await expect(dialog(page)).toBeVisible();
+    await dialog(page).getByRole("combobox").fill("orders");
+    await expect(dialog(page).getByRole("option")).toHaveCount(2);
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    await expect(dialog(page)).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: "shop/orders/9" }),
+    ).toBeVisible();
+  });
+
+  test("Escape closes it without changing the selection", async ({ page }) => {
+    await openBrowse(page);
+    await page.keyboard.press("ControlOrMeta+K");
+    await page.keyboard.press("Escape");
+    await expect(dialog(page)).toHaveCount(0);
+  });
+
+  test("with nothing typed it lists recent keys", async ({ page }) => {
+    await openBrowse(page);
+    await page.getByLabel("Folder delimiter").fill("");
+    await page.getByRole("button", { name: "config" }).click();
+    await page.keyboard.press("ControlOrMeta+K");
+    await expect(
+      dialog(page).getByRole("option", { name: "config" }),
+    ).toBeVisible();
+  });
+
+  test("it can switch connection", async ({ page }) => {
+    await openBrowse(page);
+    await page.keyboard.press("ControlOrMeta+K");
+    await dialog(page).getByRole("combobox").fill("valkey");
+    await dialog(page)
+      .getByRole("option", { name: /local-valkey/ })
+      .click();
+    await expect(page.getByLabel("Switch connection")).toHaveValue("2");
+  });
+
+  test("a miss says so", async ({ page }) => {
+    await openBrowse(page);
+    await page.keyboard.press("ControlOrMeta+K");
+    await dialog(page).getByRole("combobox").fill("zzzz");
+    await expect(dialog(page).getByText("No matches.")).toBeVisible();
+  });
+});
+
+test.describe("live TTL", () => {
+  async function openTemp(page: Page) {
+    await page.clock.install();
+    await stubBackend(page, ["temp:token"]);
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: "Connect", exact: true })
+      .first()
+      .click();
+    await page.getByLabel("Folder delimiter").fill("");
+    await page.getByRole("button", { name: "temp:token" }).click();
+  }
+
+  test("the TTL counts down while you watch", async ({ page }) => {
+    await openTemp(page);
+    await expect(page.getByText("TTL 1m 30s")).toBeVisible();
+    await page.clock.fastForward(30_000);
+    await expect(page.getByText("TTL 1m")).toBeVisible();
+  });
+
+  test("it says Expired when the time is up", async ({ page }) => {
+    await openTemp(page);
+    await page.clock.fastForward(95_000);
+    await expect(page.getByText("Expired")).toBeVisible();
+  });
+
+  test("a key with no expiry shows it and does not tick", async ({ page }) => {
+    await openBrowse(page);
+    await page.getByLabel("Folder delimiter").fill("");
+    await page.getByRole("button", { name: "config" }).click();
+    await expect(page.getByText("No expiry")).toBeVisible();
+  });
+});
+
+test.describe("pinned keys", () => {
+  const pinned = (page: Page) =>
+    page.getByRole("region", { name: "Pinned keys" });
+
+  test("the Pin button pins the open key and lists it in the sidebar", async ({
+    page,
+  }) => {
+    await openBrowse(page);
+    await page.getByLabel("Folder delimiter").fill("");
+    await page.getByRole("button", { name: "config" }).click();
+    await page.getByRole("button", { name: "Pin", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Pinned" })).toBeVisible();
+    await expect(
+      pinned(page).getByRole("button", { name: "config", exact: true }),
+    ).toBeVisible();
+  });
+
+  test("right-click pins, and a pin jumps to its key inside folders", async ({
+    page,
+  }) => {
+    await openBrowse(page);
+    await page.locator('button.row[data-folder="shop"]').click();
+    await page.locator('button.row[data-folder="shop:cart"]').click();
+    await page.getByRole("button", { name: "123" }).click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Pin key" }).click();
+    await page.getByRole("button", { name: "config" }).click();
+    await pinned(page)
+      .getByRole("button", { name: "shop:cart:123", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "shop:cart:123" }),
+    ).toBeVisible();
+  });
+
+  test("unpinning removes it", async ({ page }) => {
+    await openBrowse(page);
+    await page.getByLabel("Folder delimiter").fill("");
+    await page.getByRole("button", { name: "config" }).click();
+    await page.getByRole("button", { name: "Pin", exact: true }).click();
+    await page.getByRole("button", { name: "Unpin config" }).click();
+    await expect(pinned(page)).toHaveCount(0);
+  });
+
+  test("pins stay after a reload and belong to one connection", async ({
+    page,
+  }) => {
+    await openBrowse(page);
+    await page.getByLabel("Folder delimiter").fill("");
+    await page.getByRole("button", { name: "config" }).click();
+    await page.getByRole("button", { name: "Pin", exact: true }).click();
+    await page.reload();
+    await expect(
+      pinned(page).getByRole("button", { name: "config", exact: true }),
+    ).toBeVisible();
+    await page.getByLabel("Switch connection").selectOption("2");
+    await expect(pinned(page)).toHaveCount(0);
+  });
+
+  test("quick open lists pins first", async ({ page }) => {
+    await openBrowse(page);
+    await page.getByLabel("Folder delimiter").fill("");
+    await page.getByRole("button", { name: "config" }).click();
+    await page.getByRole("button", { name: "Pin", exact: true }).click();
+    await page.keyboard.press("ControlOrMeta+K");
+    const box = page.getByRole("dialog", { name: "Quick open" });
+    await expect(box.getByText("Pinned")).toBeVisible();
+    await expect(box.getByRole("option", { name: "config" })).toBeVisible();
+  });
+});
+
+test.describe("find in value", () => {
+  async function open(page: Page, key: string) {
+    await stubBackend(page, [key]);
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: "Connect", exact: true })
+      .first()
+      .click();
+    await page.getByLabel("Folder delimiter").fill("");
+    await page.getByRole("button", { name: key }).first().click();
+  }
+  const find = (page: Page) => page.getByLabel("Find in value");
+
+  test("highlights matches in JSON and counts them", async ({ page }) => {
+    await open(page, "doc:1");
+    await find(page).fill("sku");
+    await expect(page.locator("mark")).toHaveCount(2);
+    await expect(page.getByRole("status").filter({ hasText: "of" })).toHaveText(
+      "1 of 2",
+    );
+  });
+
+  test("Enter steps to the next match and wraps; Shift+Enter goes back", async ({
+    page,
+  }) => {
+    await open(page, "doc:1");
+    await find(page).fill("sku");
+    const status = page.locator(".find__count");
+    await find(page).press("Enter");
+    await expect(status).toHaveText("2 of 2");
+    await find(page).press("Enter");
+    await expect(status).toHaveText("1 of 2");
+    await find(page).press("Shift+Enter");
+    await expect(status).toHaveText("2 of 2");
+    await expect(page.locator('mark[data-current="true"]')).toHaveCount(1);
+  });
+
+  test("says when nothing matches, and Escape clears", async ({ page }) => {
+    await open(page, "doc:1");
+    await find(page).fill("zzz");
+    await expect(page.locator(".find__count")).toHaveText("No matches");
+    await find(page).press("Escape");
+    await expect(find(page)).toHaveValue("");
+    await expect(page.locator(".find__count")).toHaveCount(0);
+  });
+
+  test("a hash is filtered to the rows that match", async ({ page }) => {
+    await open(page, "user:7");
+    await expect(page.getByRole("row")).toHaveCount(5);
+    await find(page).fill("example.com");
+    await expect(page.getByRole("row")).toHaveCount(2);
+    await expect(page.locator(".find__count")).toHaveText("1 of 4 rows");
+    await expect(
+      page.getByRole("cell", { name: "ayu@example.com" }),
+    ).toBeVisible();
+  });
+
+  test("Cmd/Ctrl+Shift+F puts the cursor in the box", async ({ page }) => {
+    await open(page, "doc:1");
+    await expect(find(page)).toBeVisible();
+    await page.keyboard.press("ControlOrMeta+Shift+F");
+    await expect(find(page)).toBeFocused();
+  });
+
+  test("the box is searched fresh for the next key", async ({ page }) => {
+    await open(page, "doc:1");
+    await find(page).fill("sku");
+    await page.getByRole("button", { name: "config" }).click();
+    await expect(find(page)).toHaveValue("");
+  });
+});
+
+test.describe("JSON folding", () => {
+  async function open(page: Page) {
+    await stubBackend(page, ["doc:1"]);
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: "Connect", exact: true })
+      .first()
+      .click();
+    await page.getByLabel("Folder delimiter").fill("");
+    await page.getByRole("button", { name: "doc:1" }).first().click();
+    await page.getByLabel("Find in value").waitFor();
+  }
+  // Lines of the pretty value: 3 is "items": [ , 4 and 8 are its two objects.
+  const arrow = (page: Page, line: number) =>
+    page.locator(`.fl[data-line="${line}"] button.fl__g`);
+
+  test("the arrow folds a block to one line with its size and back", async ({
+    page,
+  }) => {
+    await open(page);
+    await expect(page.getByText("A-1")).toBeVisible();
+    await arrow(page, 3).click();
+    await expect(page.getByText("… 2 items")).toBeVisible();
+    await expect(page.getByText("A-1")).toHaveCount(0);
+    await arrow(page, 3).click();
+    await expect(page.getByText("A-1")).toBeVisible();
+    await expect(page.getByText("… 2 items")).toHaveCount(0);
+  });
+
+  test("Collapse all keeps the top level open; Expand all opens everything", async ({
+    page,
+  }) => {
+    await open(page);
+    await page.getByRole("button", { name: "Collapse all" }).click();
+    await expect(page.getByText("… 2 items")).toBeVisible();
+    await expect(page.getByText('"status"')).toBeVisible();
+    await expect(page.getByText("A-1")).toHaveCount(0);
+    await page.getByRole("button", { name: "Expand all" }).click();
+    await expect(page.getByText("A-1")).toBeVisible();
+    await expect(page.getByText("B-2")).toBeVisible();
+  });
+
+  test("find opens the fold that hides a match", async ({ page }) => {
+    await open(page);
+    await page.getByRole("button", { name: "Collapse all" }).click();
+    await expect(page.getByText("B-2")).toHaveCount(0);
+    await page.getByLabel("Find in value").fill("B-2");
+    await expect(page.getByText("B-2")).toBeVisible();
+    await expect(page.locator('mark[data-current="true"]')).toHaveCount(1);
+    await expect(page.locator(".find__count")).toHaveText("1 of 1");
+  });
+
+  test("Enter steps into a folded block too", async ({ page }) => {
+    await open(page);
+    await page.getByLabel("Find in value").fill("sku");
+    await page.getByRole("button", { name: "Collapse all" }).click();
+    await page.getByLabel("Find in value").press("Enter");
+    await expect(page.locator(".find__count")).toHaveText("2 of 2");
+    await expect(page.getByText("B-2")).toBeVisible();
+  });
+
+  test("the Raw view has nothing to fold", async ({ page }) => {
+    await open(page);
+    await page.getByRole("tab", { name: "Raw" }).click();
+    await expect(
+      page.getByRole("button", { name: "Collapse all" }),
+    ).toHaveCount(0);
+    await expect(page.locator("button.fl__g")).toHaveCount(0);
+  });
+});
+
+test.describe("auto-refresh", () => {
+  async function open(page: Page) {
+    await page.clock.install();
+    await stubBackend(page, ["live:counter"]);
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: "Connect", exact: true })
+      .first()
+      .click();
+    await page.getByLabel("Folder delimiter").fill("");
+    await page.getByRole("button", { name: "live:counter" }).first().click();
+    await expect(page.getByText('"count"')).toBeVisible();
+  }
+  const pick = (page: Page, v: string) =>
+    page.getByLabel("Auto-refresh").selectOption(v);
+
+  test("it is off by default and the value stays put", async ({ page }) => {
+    await open(page);
+    await expect(page.getByLabel("Auto-refresh")).toHaveValue("0");
+    await expect(page.locator(".live")).toHaveCount(0);
+    await page.clock.fastForward(30_000);
+    await expect(page.locator(".fl", { hasText: '"count": 1' })).toBeVisible();
+  });
+
+  test("on, it re-reads the key every N seconds", async ({ page }) => {
+    await open(page);
+    await pick(page, "2");
+    await expect(page.locator(".live")).toContainText("Live");
+    await page.clock.fastForward(2_100);
+    await expect(page.locator(".fl", { hasText: '"count": 2' })).toBeVisible();
+    await page.clock.fastForward(2_100);
+    await expect(page.locator(".fl", { hasText: '"count": 3' })).toBeVisible();
+  });
+
+  test("a changed line flashes and an unchanged one does not", async ({
+    page,
+  }) => {
+    await open(page);
+    await pick(page, "2");
+    await page.clock.fastForward(2_100);
+    await expect(page.locator(".fl--fresh")).toHaveCount(1);
+    await expect(page.locator(".fl--fresh")).toContainText("count");
+  });
+
+  test("a value that did not change does not flash", async ({ page }) => {
+    await page.clock.install();
+    await stubBackend(page, ["doc:1"]);
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: "Connect", exact: true })
+      .first()
+      .click();
+    await page.getByLabel("Folder delimiter").fill("");
+    await page.getByRole("button", { name: "doc:1" }).first().click();
+    await page.getByLabel("Auto-refresh").selectOption("2");
+    await page.clock.fastForward(6_100);
+    await expect(page.locator(".live")).toContainText("Live");
+    await expect(page.locator(".fl--fresh")).toHaveCount(0);
+  });
+
+  test("the choice is remembered after a reload", async ({ page }) => {
+    await open(page);
+    await pick(page, "5");
+    await page.reload();
+    await expect(page.getByLabel("Auto-refresh")).toHaveValue("5");
+  });
+
+  test("a failed read pauses it and keeps the last value on screen", async ({
+    page,
+  }) => {
+    await open(page);
+    await pick(page, "2");
+    await page.evaluate(() => {
+      (window as unknown as { __FAIL_GET__: boolean }).__FAIL_GET__ = true;
+    });
+    await page.clock.fastForward(2_100);
+    await expect(page.locator(".live--paused")).toContainText("Paused");
+    await expect(page.getByText('"count"')).toBeVisible();
+    // It stays paused instead of retrying forever.
+    await page.clock.fastForward(10_000);
+    await expect(page.locator(".live--paused")).toBeVisible();
+  });
+});

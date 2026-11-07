@@ -1,0 +1,96 @@
+name: Prepare release
+
+# Turns feat: and fix: commits into a release. After CI passes on main, or when
+# run by hand, this works out the next version from the commits since the last
+# tag, bumps the version files, writes CHANGELOG.md, commits, tags, and starts
+# the Release workflow (which builds installers into a draft release).
+#
+#   feat:  -> minor     fix:, perf:  -> patch     feat!: / BREAKING CHANGE -> minor below 1.0
+#   chore:, docs:, ci:, test:, refactor:, style: -> no release on their own
+#
+# By hand you can force patch, minor or major, or do a dry run.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump (auto reads the commits)
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+      dry_run:
+        description: Only show what would be released
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    # Automatic runs only follow a green push to main.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Work out the next version
+        id: next
+        env:
+          BUMP: ${{ inputs.bump || 'auto' }}
+          DRY: ${{ inputs.dry_run && '--dry-run' || '' }}
+          # Automatic runs release at most once a day; a manual run has no limit.
+          MIN_HOURS: ${{ github.event_name == 'workflow_run' && '24' || '' }}
+        run: |
+          args=(--bump "$BUMP")
+          [ -n "$DRY" ] && args+=("$DRY")
+          [ -n "$MIN_HOURS" ] && args+=(--min-hours "$MIN_HOURS")
+          node scripts/release.mjs "${args[@]}" 2>notes.txt
+          {
+            echo "### Release plan"
+            echo
+            echo '```'
+            cat notes.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit, tag and push
+        if: steps.next.outputs.released == 'true' && !inputs.dry_run
+        env:
+          VERSION: ${{ steps.next.outputs.version }}
+          TAG: ${{ steps.next.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          npx prettier --write CHANGELOG.md >/dev/null
+          git add -A
+          git commit -m "chore(release): v$VERSION"
+          git tag "$TAG"
+          git push origin main "$TAG"
+
+      # Tags pushed with the built-in token don't start other workflows, so start
+      # the build directly.
+      - name: Start the Release workflow
+        if: steps.next.outputs.released == 'true' && !inputs.dry_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.next.outputs.tag }}
+        run: gh workflow run release.yml --ref main -f tag="$TAG"

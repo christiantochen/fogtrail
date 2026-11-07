@@ -1,0 +1,97 @@
+name: Release
+
+# Push a tag like v0.1.0, or run this workflow by hand with a tag name, to build
+# installers and attach them to a draft release. A manual run creates the tag.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v0.1.0 (must match the app version)
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    name: Check version matches tag
+    runs-on: ubuntu-latest
+    outputs:
+      notes: ${{ steps.notes.outputs.notes }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Compare tag with app versions
+        run: |
+          tag="${RELEASE_TAG#v}"
+          conf=$(jq -r .version src-tauri/tauri.conf.json)
+          cargo=$(grep -m1 '^version' src-tauri/Cargo.toml | cut -d'"' -f2)
+          pkg=$(jq -r .version package.json)
+          echo "tag=$tag tauri.conf=$conf Cargo.toml=$cargo package.json=$pkg"
+          [ "$tag" = "$conf" ] && [ "$tag" = "$cargo" ] && [ "$tag" = "$pkg" ] || {
+            echo "::error::Tag $RELEASE_TAG does not match the version in all three files"; exit 1; }
+
+      - name: Release notes from CHANGELOG.md
+        id: notes
+        run: |
+          text=$(node scripts/release.mjs --notes "$RELEASE_TAG")
+          [ -n "$text" ] || text="See the assets below to download."
+          {
+            echo "notes<<NOTES_EOF"
+            echo "$text"
+            echo
+            echo "These builds are not code-signed yet, see the README for first-launch steps."
+            echo "NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (Apple Silicon)
+            os: macos-latest
+            target: aarch64-apple-darwin
+          - name: macOS (Intel)
+            os: macos-latest
+            target: x86_64-apple-darwin
+          - name: Windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.target }}
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: Fogtrail ${{ env.RELEASE_TAG }}
+          releaseBody: ${{ needs.verify.outputs.notes }}
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.target }}

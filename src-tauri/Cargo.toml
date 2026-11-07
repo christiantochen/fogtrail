@@ -1,0 +1,53 @@
+[package]
+name = "fogtrail"
+version = "0.2.0"
+description = "A desktop data browser. Find your way through your data."
+authors = ["Christianto Chen"]
+license = "MIT OR Apache-2.0"
+edition = "2024"
+rust-version = "1.85"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "fogtrail_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+redis = { version = "1.2.2", features = ["tokio-comp", "connection-manager", "tokio-native-tls-comp"] }
+thiserror = "2.0.21"
+async-trait = "0.1.92"
+tokio = { version = "1.54.1", features = ["sync"] }
+urlencoding = "2.1.3"
+uuid = { version = "1.26.1", features = ["v4"] }
+tauri-plugin-window-state = "2.4.1"
+
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(not(any(target_os = "macos", target_os = "windows")))'.dependencies]
+keyring = { version = "3", features = ["linux-native"] }
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
+
+[dev-dependencies]
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread"] }

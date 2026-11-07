@@ -1,0 +1,23 @@
+# Local test servers. All ports are bound to localhost only.
+#
+#   docker compose up -d
+#   scripts/seed.sh [redis|valkey|dragonfly]
+name: fogtrail-dev
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "127.0.0.1:6380:6379"
+
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly
+    ports:
+      - "127.0.0.1:6381:6379"
+    ulimits:
+      memlock: -1
