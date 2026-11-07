@@ -46,4 +46,3 @@ First full release: everything built since the project started.
 
 - CI with lint, tests and WebKit screenshot checks, and installers for macOS and Windows built from tags
 - Licensed MIT OR Apache-2.0
-
