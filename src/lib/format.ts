@@ -18,6 +18,21 @@ export function formatTtlShort(seconds: number): string {
   return `${Math.round(seconds / 86400)}d`;
 }
 
+/**
+ * What a tree row shows for a key's TTL: one unit, counting down from the scan.
+ * `null` means no TTL to show; `expired` means the time is up.
+ */
+export function ttlLabel(
+  ttlSeconds: number | null,
+  scannedAt: number,
+  now: number,
+): { text: string; expired: boolean } | null {
+  const left = remainingTtl(ttlSeconds, scannedAt, Math.max(now, scannedAt));
+  if (left === null) return null;
+  if (left === 0) return { text: "expired", expired: true };
+  return { text: formatTtlShort(left), expired: false };
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;

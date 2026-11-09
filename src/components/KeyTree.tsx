@@ -8,7 +8,8 @@ import {
 } from "react";
 import type { KeyNode } from "../api/types";
 import { copyText, readCommand } from "../lib/clipboard";
-import { formatTtlShort, typeBadge } from "../lib/format";
+import { ttlLabel, typeBadge } from "../lib/format";
+import { useNow } from "../lib/useNow";
 import { buildTree, type TreeNode } from "../lib/tree";
 import { useUi } from "../state/ui";
 import { getKey } from "../api/browse";
@@ -243,7 +244,7 @@ function Row({
         </span>
         {key && <span className="badge">{typeBadge(key.kind)}</span>}
         {key?.ttlSeconds != null && (
-          <span className="row__ttl">{formatTtlShort(key.ttlSeconds)}</span>
+          <RowTtl ttl={key.ttlSeconds} scannedAt={key.scannedAt} />
         )}
         {isFolder && <span className="row__count">{node.count}</span>}
       </button>
@@ -260,5 +261,17 @@ function Row({
         </ul>
       )}
     </li>
+  );
+}
+
+/** A row's TTL, counting down on the shared clock. */
+function RowTtl({ ttl, scannedAt }: { ttl: number; scannedAt?: number }) {
+  const now = useNow();
+  const label = ttlLabel(ttl, scannedAt ?? now, now);
+  if (!label) return null;
+  return (
+    <span className={`row__ttl${label.expired ? " row__ttl--expired" : ""}`}>
+      {label.text}
+    </span>
   );
 }

@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { useKeys } from "../api/queries";
 import { useUi } from "../state/ui";
@@ -5,10 +6,13 @@ import { ConnectionSwitch } from "./ConnectionSwitch";
 import { DatabaseSelect } from "./DatabaseSelect";
 import { KeyTree } from "./KeyTree";
 import { Pinned } from "./Pinned";
-import { Lock, Mark } from "./Icons";
+import { Lock, Mark, Refresh } from "./Icons";
 import { globFor } from "../lib/tree";
 import { copyText } from "../lib/clipboard";
 import { useDebounced } from "../lib/useDebounced";
+import { formatAgo } from "../lib/refresh";
+import { refreshAll } from "../lib/refreshAll";
+import { useNow } from "../lib/useNow";
 
 export function Sidebar() {
   const conn = useUi((s) => s.connected);
@@ -22,6 +26,8 @@ export function Sidebar() {
   // Searching asks the server (SCAN MATCH), so it finds keys beyond the loaded pages.
   const term = useDebounced(filter.trim(), 250);
   const keys = useKeys(term ? globFor(term) : undefined);
+  const qc = useQueryClient();
+  const now = useNow();
   const searching = term !== "";
 
   // SCAN can return empty pages while the match is still ahead. Keep going until
@@ -135,10 +141,29 @@ export function Sidebar() {
       {!searching && <Pinned />}
 
       <div className="keys-head">
-        <div className="section-label">
-          {searching ? "Matches" : "Keys"}
-          {keys.isSuccess ? ` · ${loaded}${keys.data.hasMore ? "+" : ""}` : ""}
+        <div>
+          <div className="section-label">
+            {searching ? "Matches" : "Keys"}
+            {keys.isSuccess
+              ? ` · ${loaded}${keys.data.hasMore ? "+" : ""}`
+              : ""}
+          </div>
+          {keys.isSuccess && (
+            <div className="keys-head__scanned">
+              Scanned{" "}
+              {formatAgo(Math.max(0, (now - keys.dataUpdatedAt) / 1000))}
+            </div>
+          )}
         </div>
+        <button
+          type="button"
+          className={`icon-btn${keys.isFetching ? " icon-btn--spin" : ""}`}
+          aria-label="Refresh keys"
+          title={`Refresh (${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘R" : "Ctrl+R"})`}
+          onClick={() => refreshAll(qc)}
+        >
+          <Refresh />
+        </button>
         <label
           className="delim"
           title="Each character here splits key names into folders, so :/ splits on both. Empty for a flat list."

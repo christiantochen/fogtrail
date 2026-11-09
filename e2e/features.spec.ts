@@ -241,10 +241,36 @@ test.describe("live TTL", () => {
     await expect(page.getByText("TTL 1m")).toBeVisible();
   });
 
-  test("it says Expired when the time is up", async ({ page }) => {
+  test("when the time is up the page says the key is gone", async ({
+    page,
+  }) => {
     await openTemp(page);
     await page.clock.fastForward(95_000);
-    await expect(page.getByText("Expired")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "This key no longer exists" }),
+    ).toBeVisible();
+    await expect(page.getByText("hello world")).toHaveCount(0);
+  });
+
+  test("the tree row counts down and then says expired", async ({ page }) => {
+    await openTemp(page);
+    const ttl = page.locator(".row__ttl");
+    await expect(ttl).toHaveText("2m");
+    await page.clock.fastForward(40_000);
+    await expect(ttl).toHaveText("50s");
+    await page.clock.fastForward(60_000);
+    await expect(ttl).toHaveText("expired");
+  });
+
+  test("the refresh button rescans and the caption shows the scan age", async ({
+    page,
+  }) => {
+    await openTemp(page);
+    await expect(page.getByText("Scanned just now")).toBeVisible();
+    await page.clock.fastForward(125_000);
+    await expect(page.getByText("Scanned 2m ago")).toBeVisible();
+    await page.getByRole("button", { name: "Refresh keys" }).click();
+    await expect(page.getByText("Scanned just now")).toBeVisible();
   });
 
   test("a key with no expiry shows it and does not tick", async ({ page }) => {

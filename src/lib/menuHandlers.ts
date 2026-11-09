@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { FIND_VALUE_EVENT } from "./find";
 import type { MenuHandlers } from "./menu";
+import { refreshAll } from "./refreshAll";
 import { checkForUpdates } from "./updater";
 import { useUi } from "../state/ui";
 
@@ -27,9 +28,7 @@ export function menuHandlers(qc: QueryClient): MenuHandlers {
     },
     refresh: () => {
       if (!ui().connected) return;
-      void qc.invalidateQueries({ queryKey: ["keys"] });
-      void qc.invalidateQueries({ queryKey: ["key"] });
-      void qc.invalidateQueries({ queryKey: ["serverInfo"] });
+      refreshAll(qc);
     },
     quickOpen: () => ui().setQuickOpen(true),
     findValue: () => window.dispatchEvent(new Event(FIND_VALUE_EVENT)),
