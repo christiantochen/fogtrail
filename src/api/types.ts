@@ -10,6 +10,8 @@ export interface KeyNode {
   name: string;
   kind: string;
   ttlSeconds: number | null;
+  /** When the app scanned this key (ms). Set by the app, not the backend. */
+  scannedAt?: number;
 }
 
 export interface Page<T> {

@@ -19,8 +19,15 @@ export function useKeys(pattern?: string) {
   >({
     queryKey: ["keys", pattern],
     initialPageParam: null,
-    queryFn: ({ pageParam }) =>
-      scanKeys({ pattern, cursor: pageParam, count: PAGE }),
+    queryFn: async ({ pageParam }) => {
+      const page = await scanKeys({ pattern, cursor: pageParam, count: PAGE });
+      // Stamp each key with its scan time, so a TTL counts down from when it was read.
+      const scannedAt = Date.now();
+      return {
+        ...page,
+        items: page.items.map((k) => ({ ...k, scannedAt })),
+      };
+    },
     getNextPageParam: (last) => last.nextCursor,
     select: (data) => ({
       items: data.pages.flatMap((p) => p.items),
@@ -37,6 +44,8 @@ export const useKeyDetail = (name: string | null, refreshSeconds = 0) =>
     queryFn: () => getKey(name as string),
     enabled: name !== null,
     retry: false,
+    // Reopening a key always reads it again, so an old value is never shown as current.
+    staleTime: 0,
     refetchInterval: (query) =>
       refreshSeconds > 0 && query.state.status !== "error"
         ? refreshSeconds * 1000

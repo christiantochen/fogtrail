@@ -98,6 +98,35 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page).toHaveScreenshot(`copied-${scheme}.png`);
     });
 
+    test("expired key in the tree", async ({ page }) => {
+      await page.clock.install();
+      await page
+        .getByRole("button", { name: "Connect", exact: true })
+        .first()
+        .click();
+      await page.getByLabel("Folder delimiter").fill("");
+      await page.getByRole("button", { name: "temp:token" }).click();
+      await page.clock.fastForward(95_000);
+      await page
+        .getByRole("heading", { name: "This key no longer exists" })
+        .waitFor();
+      await settle(page);
+      await expect(page).toHaveScreenshot(`key-gone-${scheme}.png`);
+    });
+
+    test("scan age and refresh button", async ({ page }) => {
+      await page.clock.install();
+      await page
+        .getByRole("button", { name: "Connect", exact: true })
+        .first()
+        .click();
+      await page.getByText("Scanned just now").waitFor();
+      await page.clock.fastForward(240_000);
+      await page.getByText("Scanned 4m ago").waitFor();
+      await settle(page);
+      await expect(page).toHaveScreenshot(`scan-age-${scheme}.png`);
+    });
+
     test("quick open", async ({ page }) => {
       await page
         .getByRole("button", { name: "Connect", exact: true })

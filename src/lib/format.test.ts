@@ -8,6 +8,7 @@ import {
   formatUptime,
   hitRate,
   formatTtlShort,
+  ttlLabel,
   hexDump,
   tryPrettyJson,
   typeBadge,
@@ -102,5 +103,25 @@ describe("remainingTtl", () => {
   it("stops at zero and keeps no-expiry as null", () => {
     expect(remainingTtl(5, 0, 60_000)).toBe(0);
     expect(remainingTtl(null, 0, 60_000)).toBeNull();
+  });
+});
+
+describe("ttlLabel", () => {
+  it("counts down from the scan, one unit, then says expired", () => {
+    const t0 = 1_000_000;
+    expect(ttlLabel(600, t0, t0)).toEqual({ text: "10m", expired: false });
+    expect(ttlLabel(600, t0, t0 + 570_000)).toEqual({
+      text: "30s",
+      expired: false,
+    });
+    expect(ttlLabel(600, t0, t0 + 600_000)).toEqual({
+      text: "expired",
+      expired: true,
+    });
+    expect(ttlLabel(600, t0, t0 + 9_999_000)?.expired).toBe(true);
+  });
+  it("shows nothing without a TTL and ignores a clock that is behind", () => {
+    expect(ttlLabel(null, 0, 5000)).toBeNull();
+    expect(ttlLabel(90, 10_000, 0)).toEqual({ text: "2m", expired: false });
   });
 });

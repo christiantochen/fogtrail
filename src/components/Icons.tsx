@@ -45,3 +45,10 @@ export const Mark = (p: SVGProps<SVGSVGElement>) => (
     <circle cx="17" cy="13" r="2.4" fill="#F2B33D" />
   </svg>
 );
+
+export const Refresh = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="M21 12a9 9 0 1 1-3-6.7" />
+    <path d="M21 3v6h-6" />
+  </svg>
+);

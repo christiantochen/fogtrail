@@ -124,7 +124,7 @@ export async function stubBackend(page: Page, extraKeys: string[] = []) {
                   .map((name) => ({
                     name,
                     kind: "string",
-                    ttlSeconds: null,
+                    ttlSeconds: name.startsWith("temp:") ? 90 : null,
                   })),
                 nextCursor: null,
               };
@@ -134,7 +134,16 @@ export async function stubBackend(page: Page, extraKeys: string[] = []) {
               const w = window as unknown as {
                 __reads?: number;
                 __FAIL_GET__?: boolean;
+                __tempBorn?: number;
               };
+              // temp: keys live for 90 s from their first read, then Redis removes them.
+              let tempLeft: number | null = null;
+              if (n.startsWith("temp:")) {
+                w.__tempBorn ??= Date.now();
+                tempLeft = 90 - Math.floor((Date.now() - w.__tempBorn) / 1000);
+                if (tempLeft <= 0)
+                  throw { kind: "notFound", message: `No such key: ${n}` };
+              }
               if (n.startsWith("live:")) {
                 if (w.__FAIL_GET__)
                   throw { kind: "connect", message: "Connection lost" };
@@ -190,9 +199,7 @@ export async function stubBackend(page: Page, extraKeys: string[] = []) {
               return {
                 name: args.name,
                 kind: "string",
-                ttlSeconds: (args.name as string).startsWith("temp:")
-                  ? 90
-                  : null,
+                ttlSeconds: tempLeft,
                 encoding: "embstr",
                 sizeBytes: 12,
                 readWith: ["GET key"],
