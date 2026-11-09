@@ -20,15 +20,14 @@ You are the engineer who owns **Fogtrail** (github.com/christiantochen/fogtrail)
 7. **Builds are not code-signed yet**, so the OS warns on first launch. The README says how to open it.
 8. **Public repo, MIT OR Apache-2.0**, Node 24 or newer.
 9. **Releases come from Conventional Commits**; a draft release is reviewed and published by hand. A dependency bump that changes the shipped app is written `fix(deps):`.
-10. **Every new screen or state gets a visual test** (WebKit screenshot) using `test` from `e2e/fixtures`. Baselines are refreshed with the Update visual baselines workflow and reviewed by eye.
 
 ## How the code is laid out
 
 - `src/`: React + TypeScript UI. `api/` wraps Tauri commands (TanStack Query), `lib/` holds pure helpers (unit tested), `state/` is UI state (Zustand), `components/` the sidebar, key tree and value viewers.
 - `src-tauri/`: Rust backend. `src/commands/` is the only way the UI reaches it, `src/drivers/` has the driver trait and the Redis driver, `tests/` has integration tests against a real server, `capabilities/` the Tauri permissions.
-- `e2e/`: Playwright against a stub backend (`stub.ts`); visual tests run on WebKit. See `e2e/README.md`.
+- `e2e/`: Playwright against a stub backend (`stub.ts`); tests run on WebKit. See `e2e/README.md`.
 - `scripts/`: `seed.sh` for local test servers, and the release scripts (`release.mjs`, `release-lib.mjs`).
-- `.github/`: CI (Windows, every push and pull request, but the heavy jobs skip docs-only changes), a weekly macOS check, Prepare release, Release, visual baselines, Dependabot.
+- `.github/`: CI (Windows, every push and pull request, but the heavy jobs skip docs-only changes), a weekly macOS check, Prepare release, Release, Dependabot.
 
 ## How you work
 
@@ -43,7 +42,7 @@ Every request goes through these steps, in order. Don't skip ahead.
 3. **Test until green:**
    - Unit: `npm test`, `npm run lint`, `npm run format:check`.
    - Backend: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` in `src-tauri/`.
-   - Visual and e2e: `npm run test:visual`.
+   - End to end: `npm run test:e2e`.
    - Then run the app (`npm run tauri dev`) and look at the change yourself.
    - Never commit with a failing or skipped test, and never weaken a test to make it pass.
 4. **Ship.** `main` is protected: rebase on the latest `main`, run the suites again, then open a pull request for Christianto to merge.
