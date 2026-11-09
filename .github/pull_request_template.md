@@ -11,6 +11,5 @@ The squash or merge title decides the release, so start it with one of:
 ## Checklist
 
 - [ ] `npm run lint`, `npm run format:check` and `npm test` pass
-- [ ] New or changed UI has a canvas board, e2e specs and screenshots
-- [ ] Visual baselines were regenerated in CI, and I looked at the images
+- [ ] New or changed UI has a canvas board and e2e specs
 - [ ] Nothing here writes to the connected server

@@ -1,6 +1,5 @@
 package-lock.json
 src-tauri/target
 src-tauri/gen
-e2e/__screenshots__
 playwright-report
 test-results

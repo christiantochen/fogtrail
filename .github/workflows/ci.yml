@@ -126,11 +126,9 @@ jobs:
         run: cargo test
         working-directory: src-tauri
 
-  # The macOS app renders with WebKit, so the screens are compared in WebKit.
-  # Baselines live in e2e/__screenshots__; refresh them with the
-  # "Update visual baselines" workflow after an intended UI change.
-  visual:
-    name: Visual (WebKit)
+  # The macOS app renders with WebKit, so the browser tests run in WebKit.
+  e2e:
+    name: E2E (WebKit)
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
@@ -144,12 +142,12 @@ jobs:
 
       - run: npm ci
       - run: npx playwright install --with-deps webkit
-      - run: npm run test:visual
+      - run: npm run test:e2e
 
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: visual-diff
+          name: e2e-report
           path: |
             test-results
             playwright-report

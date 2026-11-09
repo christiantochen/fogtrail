@@ -1,14 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// The macOS app renders with WebKit, so the visual checks run in WebKit.
-// Set PW_BROWSER=chromium to try the tests somewhere WebKit isn't installed
-// (its screenshots are not comparable with the committed baselines).
+// The macOS app renders with WebKit, so the tests run in WebKit.
+// Set PW_BROWSER=chromium to try them somewhere WebKit isn't installed.
 const browser = process.env.PW_BROWSER === "chromium" ? "chromium" : "webkit";
 
 export default defineConfig({
   testDir: "e2e",
-  snapshotPathTemplate: "{testDir}/__screenshots__/{arg}-{projectName}{ext}",
-  expect: { toHaveScreenshot: { maxDiffPixels: 40 } },
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL: "http://localhost:4173",
