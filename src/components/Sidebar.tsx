@@ -118,24 +118,35 @@ export function Sidebar() {
       </div>
 
       <div className="filter">
-        <input
-          id="key-search"
-          ref={input}
-          type="search"
-          aria-label="Search keys"
-          placeholder="Search keys"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              document
-                .querySelector<HTMLButtonElement>(".tree button.row")
-                ?.focus();
-            }
-          }}
-        />
-        <kbd aria-hidden="true">/</kbd>
+        <div className="filter__box">
+          <input
+            id="key-search"
+            ref={input}
+            type="search"
+            aria-label="Search keys"
+            placeholder="Search keys"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                document
+                  .querySelector<HTMLButtonElement>(".tree button.row")
+                  ?.focus();
+              }
+            }}
+          />
+          <kbd aria-hidden="true">/</kbd>
+        </div>
+        <button
+          type="button"
+          className={`icon-btn${keys.isFetching ? " icon-btn--spin" : ""}`}
+          aria-label="Refresh keys"
+          title={`Refresh (${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘R" : "Ctrl+R"})`}
+          onClick={() => refreshAll(qc)}
+        >
+          <Refresh />
+        </button>
       </div>
 
       {!searching && <Pinned />}
@@ -155,15 +166,6 @@ export function Sidebar() {
             </div>
           )}
         </div>
-        <button
-          type="button"
-          className={`icon-btn${keys.isFetching ? " icon-btn--spin" : ""}`}
-          aria-label="Refresh keys"
-          title={`Refresh (${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘R" : "Ctrl+R"})`}
-          onClick={() => refreshAll(qc)}
-        >
-          <Refresh />
-        </button>
         <label
           className="delim"
           title="Each character here splits key names into folders, so :/ splits on both. Empty for a flat list."
