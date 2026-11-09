@@ -161,7 +161,14 @@ button {
 }
 
 .filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.filter__box {
   position: relative;
+  flex: 1;
+  min-width: 0;
 }
 .filter input {
   width: 100%;
