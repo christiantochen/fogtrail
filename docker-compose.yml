@@ -2,6 +2,7 @@
 #
 #   docker compose up -d
 #   scripts/seed.sh [redis|valkey|dragonfly]
+#   docker compose exec -T mysql mysql -uroot -proot < scripts/seed-mysql.sql   (MySQL)
 name: fogtrail-dev
 
 services:
@@ -21,3 +22,11 @@ services:
       - "127.0.0.1:6381:6379"
     ulimits:
       memlock: -1
+
+  # Seed it with scripts/seed-mysql.sql (see above). Connect as fogtrail_ro / ro-test-pw.
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "127.0.0.1:3306:3306"

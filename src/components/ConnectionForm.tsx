@@ -8,23 +8,27 @@ import {
 } from "../api/browse";
 import type { AppError, Profile } from "../api/types";
 import {
+  DRIVERS,
+  defaultPort,
   draftOf,
   emptyDraft,
   toProfile,
   validate,
   type Draft,
+  type DriverId,
 } from "../lib/profile";
 import {
   applyUrl,
-  buildRedisUrl,
+  buildConnectionUrl,
   looksLikeUrl,
-  parseRedisUrl,
+  parseConnectionUrl,
   type Filled,
 } from "../lib/redisUrl";
 import { copyText } from "../lib/clipboard";
 import { useUi } from "../state/ui";
 import { Check, Lock } from "./Icons";
 import { Switch } from "./Switch";
+import { dropBrowsingCaches } from "../lib/refreshAll";
 
 export function ConnectionForm({
   profile,
@@ -54,13 +58,27 @@ export function ConnectionForm({
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) =>
     setDraft((d) => ({ ...d, [k]: v }));
 
-  // Pasting a redis:// or rediss:// URL into Host fills the form. Anything that fails to
+  // Another data store resets what only makes sense for the first: the port, if it was untouched.
+  const setDriver = (driver: DriverId) => {
+    setUrlNote(null);
+    setDraft((d) => ({
+      ...d,
+      driver,
+      port:
+        d.port === String(defaultPort(d.driver))
+          ? String(defaultPort(driver))
+          : d.port,
+    }));
+  };
+  const mysql = draft.driver === "mysql";
+
+  // Pasting a redis:// or mysql:// URL into Host fills the form. Anything that fails to
   // parse is refused as a whole, so nothing the user typed is lost.
   const onPasteHost = (e: React.ClipboardEvent<HTMLInputElement>) => {
     const text = e.clipboardData.getData("text").trim();
     if (!looksLikeUrl(text)) return; // an ordinary hostname pastes as usual
     e.preventDefault();
-    const parsed = parseRedisUrl(text);
+    const parsed = parseConnectionUrl(text, draft.driver);
     if (!parsed.ok) {
       setUrlNote({ kind: "error", message: parsed.error });
       return;
@@ -83,8 +101,7 @@ export function ConnectionForm({
       const saved = await saveProfile(toProfile(draft, id), pw);
       await qc.invalidateQueries({ queryKey: ["profiles"] });
       if (andConnect) {
-        qc.removeQueries({ queryKey: ["keys"] });
-        qc.removeQueries({ queryKey: ["key"] });
+        dropBrowsingCaches(qc);
         setConnected(await connect(saved.id), saved.id);
       } else {
         // The backend drops the live connection when its profile is saved.
@@ -121,16 +138,36 @@ export function ConnectionForm({
               : "New connection"}
         </h1>
         <p className="muted">
-          Fogtrail reads from this server. It never writes to it.
+          {profile
+            ? "Fogtrail reads from this server. It never writes to it."
+            : "Choose what to connect to. Fogtrail only reads."}
         </p>
       </div>
+
+      {!profile && (
+        <div role="radiogroup" aria-label="Data store" className="drivers">
+          {DRIVERS.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              role="radio"
+              className="driver"
+              aria-checked={draft.driver === d.id}
+              onClick={() => setDriver(d.id)}
+            >
+              <span className="driver__name">{d.label}</span>
+              <span className="muted">{d.blurb}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <Field label="Name" error={err("name")}>
         <input
           autoFocus
           value={draft.name}
           onChange={(e) => set("name", e.target.value)}
-          placeholder="local-redis"
+          placeholder={mysql ? "shop-prod" : "local-redis"}
         />
       </Field>
 
@@ -143,7 +180,7 @@ export function ConnectionForm({
           <input
             className="mono"
             value={draft.host}
-            placeholder="Host, or paste a redis:// URL"
+            placeholder={`Host, or paste a ${mysql ? "mysql" : "redis"}:// URL`}
             onPaste={onPasteHost}
             onChange={(e) => {
               setUrlNote(null);
@@ -175,24 +212,41 @@ export function ConnectionForm({
       )}
 
       <div className="form__row">
-        <Field label="Username (ACL, optional)" grow>
+        <Field
+          label={mysql ? "User" : "Username (ACL, optional)"}
+          error={err("username")}
+          grow
+        >
           <input
             className="mono"
-            placeholder="default"
+            placeholder={mysql ? "fogtrail" : "default"}
             value={draft.username}
             onChange={(e) => set("username", e.target.value)}
             autoCapitalize="off"
             spellCheck={false}
           />
         </Field>
-        <Field label="Database" error={err("database")} width={120}>
-          <input
-            className="mono"
-            inputMode="numeric"
-            value={draft.database}
-            onChange={(e) => set("database", e.target.value)}
-          />
-        </Field>
+        {mysql ? (
+          <Field label="Database (optional)" error={err("schema")} width={200}>
+            <input
+              className="mono"
+              placeholder="shop"
+              value={draft.schema}
+              onChange={(e) => set("schema", e.target.value)}
+              autoCapitalize="off"
+              spellCheck={false}
+            />
+          </Field>
+        ) : (
+          <Field label="Database" error={err("database")} width={120}>
+            <input
+              className="mono"
+              inputMode="numeric"
+              value={draft.database}
+              onChange={(e) => set("database", e.target.value)}
+            />
+          </Field>
+        )}
       </div>
 
       <div className="field">
@@ -218,6 +272,8 @@ export function ConnectionForm({
       </div>
 
       <UrlCopy draft={draft} password={password} saved={!!profile} />
+
+      {mysql && <ReadOnlyUserTip draft={draft} />}
 
       <div className="panel">
         <div className="toggle">
@@ -252,8 +308,10 @@ export function ConnectionForm({
       )}
       {test.data && (
         <div role="status" className="alert alert--ok">
-          Connected. Detected {test.data.product} {test.data.version}, with{" "}
-          {test.data.keyCount} keys in db{draft.database}.
+          Connected. Detected {test.data.product} {test.data.version}
+          {test.data.keyCount === null
+            ? "."
+            : `, with ${test.data.keyCount} keys in db${draft.database}.`}
         </div>
       )}
       {failure && (
@@ -365,7 +423,7 @@ function UrlCopy({
 }) {
   const [open, setOpen] = useState(false);
   const [include, setInclude] = useState(false);
-  const url = buildRedisUrl(draft, password, include);
+  const url = buildConnectionUrl(draft, password, include);
   return (
     <div className="urlcopy">
       <button
@@ -415,6 +473,25 @@ function UrlCopy({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** The server is the strongest read-only guard, so the form says how to set one up. */
+function ReadOnlyUserTip({ draft }: { draft: Draft }) {
+  const user = draft.username.trim() || "fogtrail";
+  const db = draft.schema.trim() || "your_database";
+  const quote = (s: string) => s.replace(/'/g, "''");
+  return (
+    <div className="panel dbtip">
+      <div className="toggle__title">Safer with a read-only MySQL user</div>
+      <p className="muted">
+        Fogtrail only sends read statements, and the server enforces it too.
+        Create a user that can only read:
+      </p>
+      <pre className="code code--tip">
+        {`CREATE USER '${quote(user)}'@'%' IDENTIFIED BY '<password>';\nGRANT SELECT, SHOW VIEW ON \`${db}\`.* TO '${quote(user)}'@'%';`}
+      </pre>
     </div>
   );
 }

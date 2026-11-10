@@ -4,8 +4,9 @@ use std::sync::{Arc, RwLock};
 
 use serde::Serialize;
 
+use crate::drivers::mysql::{self, MySqlDriver};
 use crate::drivers::redis::RedisDriver;
-use crate::drivers::{ConnectionInfo, KeyValueDriver, Probe, ServerInfo, Store};
+use crate::drivers::{ConnectionInfo, KeyValueDriver, Probe, ServerInfo, SqlDriver, Store};
 use crate::error::AppError;
 use crate::profiles::{Profile, ProfileStore};
 use crate::secrets::SecretStore;
@@ -15,7 +16,8 @@ use crate::secrets::SecretStore;
 pub struct TestResult {
     pub product: String,
     pub version: String,
-    pub key_count: u64,
+    /// Keys in the database; `None` for stores that don't count that way.
+    pub key_count: Option<u64>,
 }
 
 impl From<Probe> for TestResult {
@@ -137,6 +139,19 @@ impl Connections {
         let store = self.store()?;
         match store {
             Store::KeyValue(d) => Ok(d),
+            Store::Sql(_) => Err(AppError::InvalidArgument(
+                "This connection is a SQL database, not a key-value store.".to_string(),
+            )),
+        }
+    }
+
+    /// The active connection as a SQL database (MySQL).
+    pub fn sql(&self) -> Result<Arc<dyn SqlDriver>, AppError> {
+        match self.store()? {
+            Store::Sql(d) => Ok(d),
+            Store::KeyValue(_) => Err(AppError::InvalidArgument(
+                "This connection is a key-value store, not a SQL database.".to_string(),
+            )),
         }
     }
 
@@ -185,6 +200,9 @@ fn build_store(profile: &Profile, password: Option<&str>) -> Result<Store, AppEr
         "redis" => Ok(Store::KeyValue(Arc::new(RedisDriver::new(
             profile.url(password),
         )))),
+        "mysql" => Ok(Store::Sql(Arc::new(MySqlDriver::new(mysql::options(
+            profile, password,
+        ))))),
         other => Err(AppError::InvalidArgument(format!(
             "Unknown connection type: {other}"
         ))),
@@ -250,6 +268,29 @@ mod tests {
         p.driver = "oracle".into();
         let err = build_store(&p, None).err().unwrap();
         assert!(matches!(err, AppError::InvalidArgument(_)));
+    }
+
+    #[test]
+    fn a_mysql_profile_builds_a_sql_store_without_connecting() {
+        let mut p = profile();
+        p.driver = "mysql".into();
+        p.port = 3306;
+        assert!(matches!(build_store(&p, Some("pw")), Ok(Store::Sql(_))));
+    }
+
+    #[test]
+    fn each_kind_of_connection_refuses_the_other_kinds_commands() {
+        let c = conns();
+        let mut p = profile();
+        p.driver = "mysql".into();
+        let store = build_store(&p, None).unwrap();
+        *c.active.write().unwrap() = Some(Active {
+            profile_id: "x".into(),
+            info: store.driver().describe(),
+            store,
+        });
+        assert!(c.sql().is_ok());
+        assert!(matches!(c.key_value(), Err(AppError::InvalidArgument(_))));
     }
 
     #[test]

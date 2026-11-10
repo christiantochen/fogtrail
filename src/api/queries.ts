@@ -1,6 +1,19 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useQuery,
+} from "@tanstack/react-query";
 import { globFor } from "../lib/tree";
-import { getKey, listProfiles, scanKeys, serverInfo } from "./browse";
+import {
+  getKey,
+  listProfiles,
+  listSchemas,
+  listTables,
+  scanKeys,
+  serverInfo,
+  tableRows,
+  tableStructure,
+} from "./browse";
 import type { AppError } from "./types";
 
 const PAGE = 500;
@@ -93,3 +106,35 @@ export function useQuickKeys(term: string, want = 20) {
     },
   });
 }
+
+/** Query keys that belong to a SQL connection. Dropped together when the connection changes. */
+export const SQL_KEYS = ["schemas", "tables", "structure", "rows"] as const;
+
+export const useSchemas = () =>
+  useQuery({ queryKey: ["schemas"], queryFn: listSchemas, retry: false });
+
+export const useTables = (schema: string | null) =>
+  useQuery({
+    queryKey: ["tables", schema],
+    queryFn: () => listTables(schema as string),
+    enabled: schema !== null,
+    retry: false,
+  });
+
+export const useStructure = (schema: string, table: string) =>
+  useQuery({
+    queryKey: ["structure", schema, table],
+    queryFn: () => tableStructure(schema, table),
+    retry: false,
+    staleTime: 0,
+  });
+
+/** One page of rows. The previous page stays on screen while the next one loads. */
+export const useRows = (schema: string, table: string, offset: number) =>
+  useQuery({
+    queryKey: ["rows", schema, table, offset],
+    queryFn: () => tableRows(schema, table, offset),
+    retry: false,
+    staleTime: 0,
+    placeholderData: keepPreviousData,
+  });

@@ -52,3 +52,17 @@ export const Refresh = (p: SVGProps<SVGSVGElement>) => (
     <path d="M21 3v6h-6" />
   </svg>
 );
+
+export const TableIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M3 10h18M9 4v16" />
+  </svg>
+);
+
+export const DatabaseIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <ellipse cx="12" cy="5" rx="8" ry="3" />
+    <path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
+  </svg>
+);

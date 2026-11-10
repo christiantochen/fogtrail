@@ -1,0 +1,651 @@
+//! MySQL, read-only. Two things keep it from writing: every connection starts
+//! in a read-only session (see [`pool_options`]), and this module only builds
+//! SELECT statements itself. A read-only MySQL user adds a third layer on the
+//! server side; the README says how to make one.
+
+use std::time::Duration;
+
+use async_trait::async_trait;
+use sqlx::mysql::{
+    MySqlConnectOptions, MySqlDatabaseError, MySqlPoolOptions, MySqlRow, MySqlSslMode,
+};
+use sqlx::{Column, Row, TypeInfo};
+use sqlx::{MySqlPool, ValueRef};
+use tokio::sync::OnceCell;
+
+use super::{
+    ColumnInfo, ConnectionInfo, Driver, ForeignKeyInfo, IndexInfo, Probe, ResultColumn, RowPage,
+    SchemaInfo, SqlDriver, TableInfo, TableStructure,
+};
+use crate::error::AppError;
+use crate::profiles::Profile;
+
+/// Rows per page when the caller doesn't say, and the most it may ask for.
+const PAGE_ROWS: u32 = 100;
+const PAGE_ROWS_MAX: u32 = 500;
+/// Most characters of a text cell that are sent to the UI.
+const CELL_CHARS: usize = 2000;
+/// Most bytes of a binary cell that are rendered as hex.
+const CELL_HEX_BYTES: usize = 1024;
+const SYSTEM_SCHEMAS: [&str; 4] = ["information_schema", "mysql", "performance_schema", "sys"];
+
+/// Pool settings, public so tests can check the read-only session on the real thing.
+pub fn pool_options() -> MySqlPoolOptions {
+    MySqlPoolOptions::new()
+        .max_connections(4)
+        // Fail fast: a wrong host should show an error in seconds.
+        .acquire_timeout(Duration::from_secs(5))
+        .after_connect(|conn, _meta| {
+            Box::pin(async move {
+                sqlx::query("SET SESSION TRANSACTION READ ONLY")
+                    .execute(&mut *conn)
+                    .await?;
+                Ok(())
+            })
+        })
+}
+
+/// Connection options for a saved profile. The password is passed separately
+/// because it lives in the keychain, not in the profile.
+pub fn options(profile: &Profile, password: Option<&str>) -> MySqlConnectOptions {
+    let mut o = MySqlConnectOptions::new()
+        .host(profile.host.trim())
+        .port(profile.port)
+        // Off means off. On means the certificate and host name are checked.
+        .ssl_mode(if profile.tls {
+            MySqlSslMode::VerifyIdentity
+        } else {
+            MySqlSslMode::Disabled
+        });
+    if let Some(u) = profile.username.as_deref().filter(|u| !u.is_empty()) {
+        o = o.username(u);
+    }
+    if let Some(p) = password.filter(|p| !p.is_empty()) {
+        o = o.password(p);
+    }
+    if let Some(s) = profile
+        .schema
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        o = o.database(s);
+    }
+    o
+}
+
+pub struct MySqlDriver {
+    options: MySqlConnectOptions,
+    address: String,
+    pool: OnceCell<MySqlPool>,
+}
+
+impl MySqlDriver {
+    pub fn new(options: MySqlConnectOptions) -> Self {
+        let address = format!("{}:{}", options.get_host(), options.get_port());
+        Self {
+            options,
+            address,
+            pool: OnceCell::new(),
+        }
+    }
+
+    /// Connects on first use. A failed attempt leaves nothing behind, so the next call retries.
+    async fn pool(&self) -> Result<&MySqlPool, AppError> {
+        self.pool
+            .get_or_try_init(|| async {
+                pool_options()
+                    .connect_with(self.options.clone())
+                    .await
+                    .map_err(|e| to_app_error(e, &self.address))
+            })
+            .await
+    }
+
+    fn err(&self, e: sqlx::Error) -> AppError {
+        to_app_error(e, &self.address)
+    }
+
+    /// Fails with a plain message when the table doesn't exist or isn't visible.
+    /// Returns `"table"` or `"view"`.
+    async fn kind_of(&self, schema: &str, table: &str) -> Result<String, AppError> {
+        let pool = self.pool().await?;
+        let row = sqlx::query(
+            "SELECT CAST(TABLE_TYPE AS CHAR) FROM information_schema.TABLES \
+             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
+        )
+        .bind(schema)
+        .bind(table)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| self.err(e))?;
+        match row.and_then(|r| text(&r, 0)) {
+            Some(t) => Ok(kind_name(&t).to_string()),
+            None => Err(AppError::InvalidArgument(format!(
+                "There is no table {} in {}.",
+                quote_ident(table),
+                quote_ident(schema)
+            ))),
+        }
+    }
+}
+
+#[async_trait]
+impl Driver for MySqlDriver {
+    fn describe(&self) -> ConnectionInfo {
+        ConnectionInfo {
+            driver: "MySQL".to_string(),
+            address: self.address.clone(),
+            database: 0,
+            store: "sql".to_string(),
+        }
+    }
+
+    async fn probe(&self) -> Result<Probe, AppError> {
+        let pool = self.pool().await?;
+        let row = sqlx::query("SELECT CAST(VERSION() AS CHAR)")
+            .fetch_one(pool)
+            .await
+            .map_err(|e| self.err(e))?;
+        let (product, version) = detect(&text(&row, 0).unwrap_or_default());
+        Ok(Probe {
+            product,
+            version,
+            key_count: None,
+        })
+    }
+}
+
+#[async_trait]
+impl SqlDriver for MySqlDriver {
+    async fn list_schemas(&self) -> Result<Vec<SchemaInfo>, AppError> {
+        let pool = self.pool().await?;
+        let rows = sqlx::query(
+            "SELECT CAST(SCHEMA_NAME AS CHAR) FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME",
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| self.err(e))?;
+        Ok(rows
+            .iter()
+            .filter_map(|r| text(r, 0))
+            .map(|name| SchemaInfo {
+                system: SYSTEM_SCHEMAS.contains(&name.to_lowercase().as_str()),
+                name,
+            })
+            .collect())
+    }
+
+    async fn list_tables(&self, schema: &str) -> Result<Vec<TableInfo>, AppError> {
+        let pool = self.pool().await?;
+        let rows = sqlx::query(
+            "SELECT CAST(TABLE_NAME AS CHAR), CAST(TABLE_TYPE AS CHAR), CAST(TABLE_ROWS AS CHAR) \
+             FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME",
+        )
+        .bind(schema)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| self.err(e))?;
+        Ok(rows
+            .iter()
+            .filter_map(|r| {
+                let name = text(r, 0)?;
+                let kind = kind_name(&text(r, 1)?).to_string();
+                let estimated_rows = if kind == "view" {
+                    None
+                } else {
+                    text(r, 2).and_then(|n| n.parse().ok())
+                };
+                Some(TableInfo {
+                    name,
+                    kind,
+                    estimated_rows,
+                })
+            })
+            .collect())
+    }
+
+    async fn table_structure(&self, schema: &str, table: &str) -> Result<TableStructure, AppError> {
+        let kind = self.kind_of(schema, table).await?;
+        let pool = self.pool().await?;
+        let meta = sqlx::query(
+            "SELECT CAST(ENGINE AS CHAR), CAST(TABLE_COMMENT AS CHAR) \
+             FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
+        )
+        .bind(schema)
+        .bind(table)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| self.err(e))?;
+        let columns = sqlx::query(
+            "SELECT CAST(COLUMN_NAME AS CHAR), CAST(COLUMN_TYPE AS CHAR), CAST(IS_NULLABLE AS CHAR), \
+                    CAST(COLUMN_KEY AS CHAR), CAST(COLUMN_DEFAULT AS CHAR), CAST(EXTRA AS CHAR), \
+                    CAST(COLUMN_COMMENT AS CHAR) \
+             FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? \
+             ORDER BY ORDINAL_POSITION",
+        )
+        .bind(schema)
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| self.err(e))?;
+        let index_rows = sqlx::query(
+            "SELECT CAST(INDEX_NAME AS CHAR), CAST(NON_UNIQUE AS CHAR), CAST(COLUMN_NAME AS CHAR), \
+                    CAST(INDEX_TYPE AS CHAR) \
+             FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? \
+             ORDER BY INDEX_NAME, SEQ_IN_INDEX",
+        )
+        .bind(schema)
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| self.err(e))?;
+        let fk_rows = sqlx::query(
+            "SELECT CAST(CONSTRAINT_NAME AS CHAR), CAST(COLUMN_NAME AS CHAR), \
+                    CAST(REFERENCED_TABLE_SCHEMA AS CHAR), CAST(REFERENCED_TABLE_NAME AS CHAR), \
+                    CAST(REFERENCED_COLUMN_NAME AS CHAR) \
+             FROM information_schema.KEY_COLUMN_USAGE \
+             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL \
+             ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION",
+        )
+        .bind(schema)
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| self.err(e))?;
+
+        Ok(TableStructure {
+            kind: kind.clone(),
+            engine: text(&meta, 0),
+            // MySQL stores the word "VIEW" in a view's comment.
+            comment: text(&meta, 1).filter(|c| !c.is_empty() && !(kind == "view" && c == "VIEW")),
+            columns: columns
+                .iter()
+                .map(|r| ColumnInfo {
+                    name: text(r, 0).unwrap_or_default(),
+                    data_type: text(r, 1).unwrap_or_default(),
+                    nullable: text(r, 2).as_deref() == Some("YES"),
+                    key: text(r, 3).filter(|k| !k.is_empty()),
+                    default: text(r, 4),
+                    extra: text(r, 5).filter(|e| !e.is_empty()),
+                    comment: text(r, 6).filter(|c| !c.is_empty()),
+                })
+                .collect(),
+            indexes: group_indexes(
+                index_rows
+                    .iter()
+                    .map(|r| {
+                        (
+                            text(r, 0).unwrap_or_default(),
+                            text(r, 1).as_deref() == Some("0"),
+                            text(r, 2).unwrap_or_else(|| "(expression)".to_string()),
+                            text(r, 3).unwrap_or_default(),
+                        )
+                    })
+                    .collect(),
+            ),
+            foreign_keys: group_foreign_keys(
+                fk_rows
+                    .iter()
+                    .map(|r| {
+                        (
+                            text(r, 0).unwrap_or_default(),
+                            text(r, 1).unwrap_or_default(),
+                            text(r, 2).unwrap_or_default(),
+                            text(r, 3).unwrap_or_default(),
+                            text(r, 4).unwrap_or_default(),
+                        )
+                    })
+                    .collect(),
+            ),
+        })
+    }
+
+    async fn table_rows(
+        &self,
+        schema: &str,
+        table: &str,
+        offset: u64,
+        count: u32,
+    ) -> Result<RowPage, AppError> {
+        // Checked against the server's own list, so only real names are ever quoted into SQL.
+        self.kind_of(schema, table).await?;
+        let pool = self.pool().await?;
+        let count = if count == 0 { PAGE_ROWS } else { count }.min(PAGE_ROWS_MAX);
+        // A stable order makes pages line up; without a primary key the server decides.
+        let pk = sqlx::query(
+            "SELECT CAST(COLUMN_NAME AS CHAR) FROM information_schema.STATISTICS \
+             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND INDEX_NAME = 'PRIMARY' \
+             ORDER BY SEQ_IN_INDEX",
+        )
+        .bind(schema)
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| self.err(e))?;
+        let pk: Vec<String> = pk.iter().filter_map(|r| text(r, 0)).collect();
+        let sql = page_sql(schema, table, &pk, offset, count);
+        // `raw_sql` uses the text protocol, so every value arrives as text.
+        let rows = sqlx::raw_sql(&sql)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| self.err(e))?;
+        let columns: Vec<ResultColumn> = rows
+            .first()
+            .map(|r| {
+                r.columns()
+                    .iter()
+                    .map(|c| ResultColumn {
+                        name: c.name().to_string(),
+                        type_name: c.type_info().name().to_string(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let has_more = rows.len() > count as usize;
+        let rows = rows
+            .iter()
+            .take(count as usize)
+            .map(|r| {
+                (0..r.len())
+                    .map(|i| cell(r, i, r.columns()[i].type_info().name()))
+                    .collect()
+            })
+            .collect();
+        // An empty page has no row to read the column names from, so ask for them.
+        let columns = if columns.is_empty() {
+            self.column_names(schema, table).await?
+        } else {
+            columns
+        };
+        Ok(RowPage {
+            columns,
+            rows,
+            offset,
+            has_more,
+        })
+    }
+}
+
+impl MySqlDriver {
+    async fn column_names(&self, schema: &str, table: &str) -> Result<Vec<ResultColumn>, AppError> {
+        let pool = self.pool().await?;
+        let rows = sqlx::query(
+            "SELECT CAST(COLUMN_NAME AS CHAR), CAST(DATA_TYPE AS CHAR) \
+             FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? \
+             ORDER BY ORDINAL_POSITION",
+        )
+        .bind(schema)
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| self.err(e))?;
+        Ok(rows
+            .iter()
+            .map(|r| ResultColumn {
+                name: text(r, 0).unwrap_or_default(),
+                type_name: text(r, 1).unwrap_or_default().to_uppercase(),
+            })
+            .collect())
+    }
+}
+
+/// Quotes a schema, table or column name for use in SQL.
+pub fn quote_ident(name: &str) -> String {
+    format!("`{}`", name.replace('`', "``"))
+}
+
+fn page_sql(schema: &str, table: &str, pk: &[String], offset: u64, count: u32) -> String {
+    let order = if pk.is_empty() {
+        String::new()
+    } else {
+        let cols: Vec<String> = pk.iter().map(|c| quote_ident(c)).collect();
+        format!(" ORDER BY {}", cols.join(", "))
+    };
+    // One extra row tells us whether there is another page.
+    format!(
+        "SELECT * FROM {}.{}{order} LIMIT {} OFFSET {offset}",
+        quote_ident(schema),
+        quote_ident(table),
+        count + 1
+    )
+}
+
+fn kind_name(table_type: &str) -> &'static str {
+    if table_type.contains("VIEW") {
+        "view"
+    } else {
+        "table"
+    }
+}
+
+/// Product and version from `SELECT VERSION()`, such as `8.0.36` or `10.11.6-MariaDB`.
+fn detect(raw: &str) -> (String, String) {
+    let product = if raw.to_lowercase().contains("mariadb") {
+        "MariaDB"
+    } else {
+        "MySQL"
+    };
+    let version = raw.split('-').next().unwrap_or(raw).trim();
+    (product.to_string(), version.to_string())
+}
+
+/// A text column, or `None` for NULL. Reads the raw bytes, because MySQL 8's
+/// information_schema columns report types sqlx won't decode as `String`.
+fn text(row: &MySqlRow, i: usize) -> Option<String> {
+    let bytes = row.try_get_unchecked::<Option<Vec<u8>>, _>(i).ok()??;
+    Some(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// One result cell as the UI shows it.
+fn cell(row: &MySqlRow, i: usize, type_name: &str) -> Option<String> {
+    let raw = row.try_get_raw(i).ok()?;
+    if raw.is_null() {
+        return None;
+    }
+    let bytes = row.try_get_unchecked::<Vec<u8>, _>(i).ok()?;
+    Some(cell_text(type_name, &bytes))
+}
+
+/// Binary types are shown as hex, everything else as text, both cut to a sane size.
+fn cell_text(type_name: &str, bytes: &[u8]) -> String {
+    let binary = matches!(
+        type_name,
+        "BINARY"
+            | "VARBINARY"
+            | "BLOB"
+            | "TINYBLOB"
+            | "MEDIUMBLOB"
+            | "LONGBLOB"
+            | "BIT"
+            | "GEOMETRY"
+    );
+    if binary {
+        let shown = &bytes[..bytes.len().min(CELL_HEX_BYTES)];
+        let hex: String = shown.iter().map(|b| format!("{b:02x}")).collect();
+        let more = if bytes.len() > shown.len() { "…" } else { "" };
+        return format!("0x{hex}{more}");
+    }
+    let s = String::from_utf8_lossy(bytes);
+    if s.chars().count() > CELL_CHARS {
+        let cut: String = s.chars().take(CELL_CHARS).collect();
+        format!("{cut}…")
+    } else {
+        s.into_owned()
+    }
+}
+
+/// Groups one-row-per-column index rows into indexes. Rows arrive ordered by
+/// index name then position; `PRIMARY` is moved to the front.
+fn group_indexes(rows: Vec<(String, bool, String, String)>) -> Vec<IndexInfo> {
+    let mut out: Vec<IndexInfo> = Vec::new();
+    for (name, unique, column, index_type) in rows {
+        match out.last_mut() {
+            Some(last) if last.name == name => last.columns.push(column),
+            _ => out.push(IndexInfo {
+                name,
+                unique,
+                columns: vec![column],
+                index_type,
+            }),
+        }
+    }
+    out.sort_by_key(|i| i.name != "PRIMARY");
+    out
+}
+
+fn group_foreign_keys(rows: Vec<(String, String, String, String, String)>) -> Vec<ForeignKeyInfo> {
+    let mut out: Vec<ForeignKeyInfo> = Vec::new();
+    for (name, column, ref_schema, ref_table, ref_column) in rows {
+        match out.last_mut() {
+            Some(last) if last.name == name => {
+                last.columns.push(column);
+                last.ref_columns.push(ref_column);
+            }
+            _ => out.push(ForeignKeyInfo {
+                name,
+                columns: vec![column],
+                ref_schema,
+                ref_table,
+                ref_columns: vec![ref_column],
+            }),
+        }
+    }
+    out
+}
+
+/// Turns what sqlx reports into something the UI can show. The server's own
+/// message is kept for statement errors; connection problems name the address.
+fn to_app_error(e: sqlx::Error, address: &str) -> AppError {
+    match &e {
+        sqlx::Error::Database(db) => {
+            // `code()` is the SQLSTATE; MySQL's own error number is on the MySQL error type.
+            let number = db
+                .try_downcast_ref::<MySqlDatabaseError>()
+                .map(MySqlDatabaseError::number);
+            match number {
+                // 1045 access denied, 1044 no access to the schema, 1049 unknown schema.
+                Some(1044 | 1045 | 1049) => AppError::Connect(db.message().to_string()),
+                _ => AppError::Sql(db.message().to_string()),
+            }
+        }
+        sqlx::Error::Io(_)
+        | sqlx::Error::Tls(_)
+        | sqlx::Error::PoolTimedOut
+        | sqlx::Error::Configuration(_)
+        | sqlx::Error::Protocol(_) => {
+            AppError::Connect(format!("Could not connect to {address}: {e}"))
+        }
+        _ => AppError::Sql(e.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_are_quoted_and_backticks_doubled() {
+        assert_eq!(quote_ident("orders"), "`orders`");
+        assert_eq!(quote_ident("back`tick"), "`back``tick`");
+        assert_eq!(
+            quote_ident("x`; DROP TABLE y; --"),
+            "`x``; DROP TABLE y; --`"
+        );
+    }
+
+    #[test]
+    fn a_page_asks_for_one_extra_row_and_orders_by_the_primary_key() {
+        let sql = page_sql("shop", "orders", &["id".into()], 200, 100);
+        assert_eq!(
+            sql,
+            "SELECT * FROM `shop`.`orders` ORDER BY `id` LIMIT 101 OFFSET 200"
+        );
+        let sql = page_sql("s", "t", &["a".into(), "b".into()], 0, 10);
+        assert!(sql.contains("ORDER BY `a`, `b` LIMIT 11 OFFSET 0"));
+        assert!(!page_sql("s", "t", &[], 0, 10).contains("ORDER BY"));
+    }
+
+    #[test]
+    fn product_and_version_are_split_out() {
+        assert_eq!(detect("8.0.36"), ("MySQL".into(), "8.0.36".into()));
+        assert_eq!(
+            detect("8.0.46-0ubuntu0.24.04.4"),
+            ("MySQL".into(), "8.0.46".into())
+        );
+        assert_eq!(
+            detect("10.11.6-MariaDB-1:10.11.6"),
+            ("MariaDB".into(), "10.11.6".into())
+        );
+    }
+
+    #[test]
+    fn binary_cells_become_hex_and_text_stays_text() {
+        assert_eq!(cell_text("BLOB", &[0x89, 0x50]), "0x8950");
+        assert_eq!(cell_text("VARCHAR", "héllo".as_bytes()), "héllo");
+        let long = vec![0xAB; CELL_HEX_BYTES + 1];
+        assert!(cell_text("BLOB", &long).ends_with('…'));
+        let text = "x".repeat(CELL_CHARS + 5);
+        let shown = cell_text("TEXT", text.as_bytes());
+        assert_eq!(shown.chars().count(), CELL_CHARS + 1);
+        assert!(shown.ends_with('…'));
+    }
+
+    #[test]
+    fn index_rows_are_grouped_with_the_primary_key_first() {
+        let rows = vec![
+            ("idx_a".into(), true, "a".into(), "BTREE".into()),
+            ("idx_a".into(), true, "b".into(), "BTREE".into()),
+            ("PRIMARY".into(), false, "id".into(), "BTREE".into()),
+        ];
+        let out = group_indexes(rows);
+        assert_eq!(out[0].name, "PRIMARY");
+        assert!(!out[0].unique);
+        assert_eq!(out[1].columns, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn foreign_key_rows_are_grouped_per_constraint() {
+        let rows = vec![
+            ("fk".into(), "a".into(), "s".into(), "t".into(), "x".into()),
+            ("fk".into(), "b".into(), "s".into(), "t".into(), "y".into()),
+        ];
+        let out = group_foreign_keys(rows);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].columns, vec!["a", "b"]);
+        assert_eq!(out[0].ref_columns, vec!["x", "y"]);
+    }
+
+    #[test]
+    fn connection_failures_name_the_address() {
+        let e = to_app_error(sqlx::Error::PoolTimedOut, "db:3306");
+        assert!(matches!(&e, AppError::Connect(m) if m.contains("db:3306")));
+        let e = to_app_error(sqlx::Error::RowNotFound, "db:3306");
+        assert!(matches!(e, AppError::Sql(_)));
+    }
+
+    #[test]
+    fn options_use_tls_checks_only_when_asked() {
+        let mut p = Profile {
+            id: String::new(),
+            name: "x".into(),
+            driver: "mysql".into(),
+            host: " db.internal ".into(),
+            port: 3307,
+            username: Some("ro".into()),
+            database: 0,
+            schema: Some("shop".into()),
+            tls: false,
+        };
+        let o = options(&p, Some("pw"));
+        assert_eq!(o.get_host(), "db.internal");
+        assert_eq!(o.get_port(), 3307);
+        assert_eq!(o.get_database(), Some("shop"));
+        assert!(matches!(o.get_ssl_mode(), MySqlSslMode::Disabled));
+        p.tls = true;
+        assert!(matches!(
+            options(&p, None).get_ssl_mode(),
+            MySqlSslMode::VerifyIdentity
+        ));
+    }
+}

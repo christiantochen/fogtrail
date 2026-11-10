@@ -281,7 +281,7 @@ async fn probe_reports_product_and_key_count() {
     };
     let p = d.probe().await.unwrap();
     assert_eq!(p.product, "Redis");
-    assert_eq!(p.key_count, 8);
+    assert_eq!(p.key_count, Some(8));
     assert!(!p.version.is_empty());
 }
 

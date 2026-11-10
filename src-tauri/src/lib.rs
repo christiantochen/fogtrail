@@ -67,6 +67,10 @@ pub fn run() {
             commands::stream_page,
             commands::server_info,
             commands::select_database,
+            commands::list_schemas,
+            commands::list_tables,
+            commands::table_structure,
+            commands::table_rows,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

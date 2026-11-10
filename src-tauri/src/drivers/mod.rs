@@ -2,6 +2,7 @@
 //! store ([`KeyValueDriver`] today); Tauri commands only ever talk to the traits,
 //! so adding a database means adding a module here, not changing the commands.
 
+pub mod mysql;
 pub mod redis;
 
 use std::sync::Arc;
@@ -18,7 +19,7 @@ pub struct ConnectionInfo {
     pub driver: String,
     pub address: String,
     pub database: i64,
-    /// Which screen the UI shows: `"keyValue"` for Redis and friends.
+    /// Which screen the UI shows: `"keyValue"` for Redis and friends, `"sql"` for MySQL.
     pub store: String,
 }
 
@@ -184,7 +185,8 @@ pub struct Probe {
     /// Detected product, such as "Redis", "Valkey" or "Dragonfly".
     pub product: String,
     pub version: String,
-    pub key_count: u64,
+    /// Keys in the selected database. `None` for stores that don't count that way.
+    pub key_count: Option<u64>,
 }
 
 /// What every data store can do: say what it is and answer a first hello.
@@ -199,12 +201,14 @@ pub trait Driver: Send + Sync {
 #[derive(Clone)]
 pub enum Store {
     KeyValue(Arc<dyn KeyValueDriver>),
+    Sql(Arc<dyn SqlDriver>),
 }
 
 impl Store {
     pub fn driver(&self) -> &dyn Driver {
         match self {
             Store::KeyValue(d) => d.as_ref(),
+            Store::Sql(d) => d.as_ref(),
         }
     }
 }
@@ -222,4 +226,102 @@ pub trait KeyValueDriver: Driver {
         before: &str,
         count: u32,
     ) -> Result<StreamPage, AppError>;
+}
+
+/// A schema (a MySQL "database") the connected user can see.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaInfo {
+    pub name: String,
+    /// Built-in schemas such as `mysql` and `information_schema`.
+    pub system: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TableInfo {
+    pub name: String,
+    /// `"table"` or `"view"`.
+    pub kind: String,
+    /// What the server's statistics say. Never an exact count; `None` for views.
+    pub estimated_rows: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnInfo {
+    pub name: String,
+    /// As the server writes it, such as `varchar(80)` or `int unsigned`.
+    pub data_type: String,
+    pub nullable: bool,
+    /// `PRI`, `UNI` or `MUL` when the column is part of a key.
+    pub key: Option<String>,
+    pub default: Option<String>,
+    pub extra: Option<String>,
+    pub comment: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexInfo {
+    pub name: String,
+    pub unique: bool,
+    pub columns: Vec<String>,
+    pub index_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ForeignKeyInfo {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub ref_schema: String,
+    pub ref_table: String,
+    pub ref_columns: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TableStructure {
+    /// `"table"` or `"view"`.
+    pub kind: String,
+    pub engine: Option<String>,
+    pub comment: Option<String>,
+    pub columns: Vec<ColumnInfo>,
+    pub indexes: Vec<IndexInfo>,
+    pub foreign_keys: Vec<ForeignKeyInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ResultColumn {
+    pub name: String,
+    /// The server's type name, such as `VARCHAR` or `DECIMAL`.
+    pub type_name: String,
+}
+
+/// One page of rows. A cell is `None` for SQL NULL, so NULL and an empty string
+/// stay different things.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RowPage {
+    pub columns: Vec<ResultColumn>,
+    pub rows: Vec<Vec<Option<String>>>,
+    pub offset: u64,
+    pub has_more: bool,
+}
+
+/// Stores browsed as schemas, tables and rows (MySQL).
+#[async_trait]
+pub trait SqlDriver: Driver {
+    async fn list_schemas(&self) -> Result<Vec<SchemaInfo>, AppError>;
+    async fn list_tables(&self, schema: &str) -> Result<Vec<TableInfo>, AppError>;
+    async fn table_structure(&self, schema: &str, table: &str) -> Result<TableStructure, AppError>;
+    async fn table_rows(
+        &self,
+        schema: &str,
+        table: &str,
+        offset: u64,
+        count: u32,
+    ) -> Result<RowPage, AppError>;
 }

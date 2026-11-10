@@ -191,7 +191,7 @@ impl Driver for RedisDriver {
         Ok(Probe {
             product,
             version,
-            key_count,
+            key_count: Some(key_count),
         })
     }
 
