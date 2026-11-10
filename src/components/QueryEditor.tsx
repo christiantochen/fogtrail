@@ -6,12 +6,12 @@ import { copyText } from "../lib/clipboard";
 import {
   elapsedLabel,
   isNumericType,
-  lineCount,
   resultToTsv,
   rowCountLabel,
 } from "../lib/sql";
 import { useUi } from "../state/ui";
 import { Lock } from "./Icons";
+import { SqlInput } from "./SqlInput";
 
 /** What the last run came to. */
 type Outcome =
@@ -53,7 +53,6 @@ export function QueryEditor({ schema }: { schema: string | null }) {
   const runId = useRef<string | null>(null);
   const counter = useRef(0);
   const mounted = useRef(true);
-  const gutter = useRef<HTMLDivElement>(null);
   const running = outcome.kind === "running";
 
   // Leaving the editor stops what it started, so nothing keeps running unseen.
@@ -152,35 +151,12 @@ export function QueryEditor({ schema }: { schema: string | null }) {
           <span>Timeout 30 s</span>
         </div>
 
-        <div className="editor">
-          <div className="editor__gutter" aria-hidden="true">
-            <div ref={gutter} className="editor__lines mono">
-              {Array.from({ length: lineCount(text) }, (_, i) => (
-                <div key={i}>{i + 1}</div>
-              ))}
-            </div>
-          </div>
-          <textarea
-            className="editor__text mono"
-            aria-label="SQL"
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
-            placeholder="SELECT * FROM orders LIMIT 10"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onScroll={(e) => {
-              if (gutter.current)
-                gutter.current.style.transform = `translateY(${-e.currentTarget.scrollTop}px)`;
-            }}
-            onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                e.preventDefault();
-                void run();
-              }
-            }}
-          />
-        </div>
+        <SqlInput
+          value={text}
+          onChange={setText}
+          onRun={() => void run()}
+          schema={schema}
+        />
 
         <div className="panel__bar">
           <div className="tabs" role="tablist" aria-label="Query output">

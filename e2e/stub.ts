@@ -282,6 +282,9 @@ export async function stubBackend(
             }
             case "table_structure": {
               const t = (args as unknown as { table: string }).table;
+              ((
+                window as unknown as { __structureCalls?: string[] }
+              ).__structureCalls ??= []).push(t);
               const col = (
                 name: string,
                 dataType: string,
