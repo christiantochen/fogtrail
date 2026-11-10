@@ -751,3 +751,58 @@ test.describe("title bar (Windows)", () => {
     ).toContainText("› config");
   });
 });
+
+test.describe("database picker and server info", () => {
+  async function open(page: Page, count?: number | null) {
+    if (count !== undefined) {
+      await page.addInitScript((n) => {
+        (window as unknown as { __DB_COUNT__: number | null }).__DB_COUNT__ = n;
+      }, count);
+    }
+    await openBrowse(page);
+  }
+
+  test("a server with several databases gets a small picker beside search", async ({
+    page,
+  }) => {
+    await open(page);
+    const picker = page.getByLabel("Database");
+    await expect(picker).toBeAttached();
+    await expect(picker.locator("option")).toHaveCount(16);
+    await expect(picker.locator("option").first()).toHaveText(/db0 · \d+ keys/);
+    // Closed, it shows only the name, and it sits in the search row.
+    await expect(page.locator(".dbpick__shown")).toHaveText("db0");
+    await expect(
+      page.locator(".filter").getByLabel("Search keys"),
+    ).toBeVisible();
+  });
+
+  test("a one-database server has no picker at all", async ({ page }) => {
+    await open(page, 1);
+    await expect(page.getByLabel("Search keys")).toBeVisible();
+    await expect(page.getByLabel("Database")).toHaveCount(0);
+  });
+
+  test("a server that will not say lists only databases with keys", async ({
+    page,
+  }) => {
+    await open(page, null);
+    // The stub has keys in db0 only, so there is nothing to choose.
+    await expect(page.getByLabel("Database")).toHaveCount(0);
+  });
+
+  test("the version in the card opens and closes Server info", async ({
+    page,
+  }) => {
+    await open(page, 1);
+    const version = page.getByRole("button", { name: "Redis 6.2.14" });
+    await expect(version).toHaveAttribute("aria-pressed", "false");
+    await version.click();
+    await expect(version).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      page.getByRole("heading", { name: /Redis/ }).first(),
+    ).toBeVisible();
+    await version.click();
+    await expect(version).toHaveAttribute("aria-pressed", "false");
+  });
+});

@@ -110,11 +110,17 @@ export function hitRate(
   return hits / (hits + misses);
 }
 
-/** Database indexes to offer: the usual 16, plus any that hold keys, plus the current one. */
-export function databaseChoices(withKeys: number[], current: number): number[] {
+/**
+ * Database indexes to offer. When the server says how many it has, all of them;
+ * when it won't say, only the ones that hold keys. The current one is always there.
+ */
+export function databaseChoices(
+  withKeys: number[],
+  current: number,
+  count: number | null,
+): number[] {
   const all = new Set<number>([
-    ...Array.from({ length: 16 }, (_, i) => i),
-    ...withKeys,
+    ...(count === null ? withKeys : Array.from({ length: count }, (_, i) => i)),
     current,
   ]);
   return [...all].sort((a, b) => a - b);

@@ -4,6 +4,10 @@ import { useServerInfo } from "../api/queries";
 import { databaseChoices } from "../lib/format";
 import { useUi } from "../state/ui";
 
+/**
+ * A small database picker for the search row. It lists only databases that exist,
+ * and is not drawn at all when the server has just one.
+ */
 export function DatabaseSelect() {
   const qc = useQueryClient();
   const conn = useUi((s) => s.connected);
@@ -22,12 +26,24 @@ export function DatabaseSelect() {
 
   if (!conn) return null;
   const counts = new Map(info.data?.databases.map((d) => [d.index, d.keys]));
-  const choices = databaseChoices([...counts.keys()], conn.database);
+  const count = info.data?.databaseCount ?? null;
+  const choices = databaseChoices([...counts.keys()], conn.database, count);
+  // Before the server has answered, or with a single database, there is nothing to pick.
+  if (!info.data || choices.length < 2) return null;
 
   return (
-    <label className="dbselect">
-      <span className="dbselect__label">Database</span>
+    <div className="dbpick">
+      {/* The closed box shows just "db0"; the list keeps the key counts. */}
+      <span className="dbpick__shown mono" aria-hidden="true">
+        db{conn.database}
+      </span>
       <select
+        aria-label="Database"
+        title={
+          count === null
+            ? "Database. This server doesn't report how many it has, so only ones with keys are listed."
+            : "Database"
+        }
         value={conn.database}
         disabled={change.isPending}
         onChange={(e) => change.mutate(Number(e.target.value))}
@@ -40,10 +56,10 @@ export function DatabaseSelect() {
         ))}
       </select>
       {change.error && (
-        <span role="alert" className="field__error">
+        <span role="alert" className="field__error dbpick__error">
           {change.error.message}
         </span>
       )}
-    </label>
+    </div>
   );
 }

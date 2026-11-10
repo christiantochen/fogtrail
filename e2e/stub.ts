@@ -211,6 +211,12 @@ export async function stubBackend(page: Page, extraKeys: string[] = []) {
                 product: "Redis",
                 version: "6.2.14",
                 databases: [{ index: 0, keys: keys.length, expires: 0 }],
+                // Tests set __DB_COUNT__ to 1 or null to mimic a one-database or a CONFIG-less server.
+                databaseCount:
+                  "__DB_COUNT__" in window
+                    ? (window as unknown as { __DB_COUNT__: number | null })
+                        .__DB_COUNT__
+                    : 16,
               };
             case "save_profile": {
               const w = window as unknown as { __saved?: unknown[] };

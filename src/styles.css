@@ -728,40 +728,7 @@ table.grid {
   width: auto;
 }
 
-/* Server info and database switcher */
-.dbrow {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-}
-.dbselect {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.dbselect__label {
-  font-size: 11.5px;
-  font-weight: 500;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.dbselect select {
-  appearance: none;
-  -webkit-appearance: none;
-  height: 30px;
-  padding: 0 26px 0 8px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--card)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a96a3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
-    no-repeat right 6px center;
-  color: var(--ink);
-  font: inherit;
-  text-overflow: ellipsis;
-}
+/* Server info */
 .btn[aria-pressed="true"] {
   background: var(--selected);
   border-color: transparent;
@@ -1501,4 +1468,69 @@ select option {
   margin: 0;
   max-width: 340px;
   color: var(--secondary);
+}
+
+/* Database picker in the search row, and Server info on the version */
+.dbpick {
+  position: relative;
+  flex: none;
+  height: 34px;
+  min-width: 52px;
+}
+.dbpick__shown {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  padding: 0 24px 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a96a3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+    no-repeat right 4px center;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.dbpick select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.dbpick:focus-within .dbpick__shown {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+.dbpick__error {
+  position: absolute;
+  top: 38px;
+  left: 0;
+  width: 240px;
+  z-index: 2;
+}
+.card__version {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px;
+  margin: 0 -4px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.card__version:hover {
+  background: var(--hover);
+}
+.card__version[aria-pressed="true"] {
+  background: var(--selected);
+  color: var(--selected-ink);
+}
+.card__chev {
+  width: 11px;
+  height: 11px;
 }

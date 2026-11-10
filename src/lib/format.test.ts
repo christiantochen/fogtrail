@@ -86,12 +86,17 @@ describe("hitRate", () => {
 });
 
 describe("databaseChoices", () => {
-  it("offers 0-15 plus extras and the current database, sorted and unique", () => {
-    const c = databaseChoices([3, 40], 99);
-    expect(c.slice(0, 3)).toEqual([0, 1, 2]);
-    expect(c.filter((n) => n === 3)).toHaveLength(1);
-    expect(c.slice(-2)).toEqual([40, 99]);
-    expect(c).toHaveLength(18);
+  it("lists every database when the server says how many it has", () => {
+    expect(databaseChoices([0], 0, 16)).toHaveLength(16);
+    expect(databaseChoices([0], 0, 4)).toEqual([0, 1, 2, 3]);
+  });
+  it("lists only databases with keys when the server will not say", () => {
+    expect(databaseChoices([3, 0], 0, null)).toEqual([0, 3]);
+    expect(databaseChoices([], 0, null)).toEqual([0]);
+  });
+  it("always includes the current database", () => {
+    expect(databaseChoices([0], 7, 4)).toEqual([0, 1, 2, 3, 7]);
+    expect(databaseChoices([0], 2, null)).toEqual([0, 2]);
   });
 });
 

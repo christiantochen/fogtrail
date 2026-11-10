@@ -6,7 +6,7 @@ import { ConnectionSwitch } from "./ConnectionSwitch";
 import { DatabaseSelect } from "./DatabaseSelect";
 import { KeyTree } from "./KeyTree";
 import { Pinned } from "./Pinned";
-import { Lock, Mark, Refresh } from "./Icons";
+import { Chevron, Lock, Mark, Refresh } from "./Icons";
 import { globFor } from "../lib/tree";
 import { copyText } from "../lib/clipboard";
 import { useDebounced } from "../lib/useDebounced";
@@ -93,7 +93,22 @@ export function Sidebar() {
         <div className="card__text">
           <ConnectionSwitch />
           <span className="card__sub mono">
-            {conn ? `${conn.driver} · ${conn.address}` : "\u00a0"}
+            {conn ? (
+              <>
+                <button
+                  type="button"
+                  className="card__version"
+                  aria-pressed={view === "server"}
+                  title="Server info"
+                  onClick={() => setView(view === "server" ? "keys" : "server")}
+                >
+                  {conn.driver} <Chevron className="card__chev" />
+                </button>
+                {` · ${conn.address}`}
+              </>
+            ) : (
+              "\u00a0"
+            )}
           </span>
         </div>
         <button
@@ -105,19 +120,8 @@ export function Sidebar() {
         </button>
       </div>
 
-      <div className="dbrow">
-        <DatabaseSelect />
-        <button
-          type="button"
-          className="btn btn--small"
-          aria-pressed={view === "server"}
-          onClick={() => setView(view === "server" ? "keys" : "server")}
-        >
-          Server info
-        </button>
-      </div>
-
       <div className="filter">
+        <DatabaseSelect />
         <div className="filter__box">
           <input
             id="key-search"
