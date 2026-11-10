@@ -3,10 +3,14 @@ import type { ColumnInfo, SchemaInfo, TableInfo } from "../api/types";
 import {
   approxRows,
   columnSub,
+  elapsedLabel,
   filterTables,
   isNumericType,
+  lineCount,
   pickSchema,
   rangeLabel,
+  resultToTsv,
+  rowCountLabel,
   visibleSchemas,
 } from "./sql";
 
@@ -105,5 +109,63 @@ describe("column helpers", () => {
     expect(columnSub({ name: "n", typeName: "VARCHAR" }, undefined)).toBe(
       "varchar",
     );
+  });
+});
+
+describe("resultToTsv", () => {
+  const cols = [
+    { name: "id", typeName: "BIGINT" },
+    { name: "note", typeName: "VARCHAR" },
+  ];
+
+  it("writes a header, then one line per row, separated by tabs", () => {
+    expect(
+      resultToTsv(cols, [
+        ["1", "a"],
+        ["2", "b"],
+      ]),
+    ).toBe("id\tnote\n1\ta\n2\tb");
+  });
+
+  it("leaves NULL empty, so it differs from the text 'NULL'", () => {
+    expect(resultToTsv(cols, [["1", null]])).toBe("id\tnote\n1\t");
+    expect(resultToTsv(cols, [["1", "NULL"]])).toBe("id\tnote\n1\tNULL");
+  });
+
+  it("keeps tabs and line breaks inside a value from breaking the table", () => {
+    expect(resultToTsv(cols, [["1", "a\tb\nc\r\nd"]])).toBe(
+      "id\tnote\n1\ta b c d",
+    );
+  });
+
+  it("is just the header when there are no rows", () => {
+    expect(resultToTsv(cols, [])).toBe("id\tnote");
+  });
+});
+
+describe("rowCountLabel and elapsedLabel", () => {
+  it("counts rows in words", () => {
+    expect(rowCountLabel(0)).toBe("No rows");
+    expect(rowCountLabel(1)).toBe("1 row");
+    expect(rowCountLabel(1000)).toBe("1,000 rows");
+  });
+
+  it("shows milliseconds under a second and seconds above", () => {
+    expect(elapsedLabel(0)).toBe("0 ms");
+    expect(elapsedLabel(999)).toBe("999 ms");
+    expect(elapsedLabel(1000)).toBe("1.0 s");
+    expect(elapsedLabel(12345)).toBe("12.3 s");
+  });
+});
+
+describe("lineCount", () => {
+  it("is always at least one", () => {
+    expect(lineCount("")).toBe(1);
+    expect(lineCount("SELECT 1")).toBe(1);
+  });
+
+  it("counts a trailing newline as a new line, like the editor does", () => {
+    expect(lineCount("a\nb")).toBe(2);
+    expect(lineCount("a\nb\n")).toBe(3);
   });
 });

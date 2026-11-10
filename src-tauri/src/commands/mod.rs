@@ -3,8 +3,8 @@ use tauri::{AppHandle, State};
 
 use crate::connections::{Connections, TestResult};
 use crate::drivers::{
-    BrowseQuery, ConnectionInfo, Detail, Node, Page, RowPage, SchemaInfo, ServerInfo, StreamPage,
-    TableInfo, TableStructure,
+    BrowseQuery, ConnectionInfo, Detail, Node, Page, QueryResult, RowPage, SchemaInfo, ServerInfo,
+    StreamPage, TableInfo, TableStructure,
 };
 use crate::error::AppError;
 use crate::profiles::Profile;
@@ -154,4 +154,22 @@ pub async fn table_rows(
         .sql()?
         .table_rows(&schema, &table, offset.unwrap_or(0), count.unwrap_or(100))
         .await
+}
+
+#[tauri::command]
+pub async fn run_query(
+    conns: State<'_, Connections>,
+    sql: String,
+    schema: Option<String>,
+    run_id: String,
+) -> Result<QueryResult, AppError> {
+    conns
+        .sql()?
+        .run_query(&sql, schema.as_deref(), &run_id)
+        .await
+}
+
+#[tauri::command]
+pub async fn cancel_query(conns: State<'_, Connections>, run_id: String) -> Result<(), AppError> {
+    conns.sql()?.cancel_query(&run_id).await
 }

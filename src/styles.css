@@ -1825,3 +1825,148 @@ select option {
   max-height: none;
   user-select: text;
 }
+
+/* SQL query editor */
+.queryopen {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  margin: 4px 0 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  font-weight: 500;
+  text-align: left;
+}
+.queryopen:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+.queryopen:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.queryopen[aria-current="true"] {
+  border-color: var(--amber);
+  background: var(--selected);
+  color: var(--selected-ink);
+}
+.queryopen svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+.runkey {
+  align-self: center;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+.querybar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 12px;
+  color: var(--secondary);
+}
+.editor {
+  flex: none;
+  display: flex;
+  height: 180px;
+  min-height: 96px;
+  max-height: 60vh;
+  resize: vertical;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--card);
+  font-size: 13px;
+  line-height: 20px;
+}
+.editor__gutter {
+  flex: none;
+  width: 44px;
+  overflow: hidden;
+  padding: 10px 0;
+  border-right: 1px solid var(--border-soft);
+  background: var(--sidebar);
+  color: var(--muted);
+  text-align: right;
+  user-select: none;
+}
+.editor__lines {
+  padding: 0 10px 0 0;
+}
+.editor__text {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  line-height: inherit;
+  white-space: pre;
+  overflow: auto;
+}
+.editor:focus-within {
+  box-shadow: inset 0 0 0 2px var(--amber);
+}
+.queryempty {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--secondary);
+}
+.queryempty h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: var(--ink);
+}
+.queryempty p {
+  margin: 0;
+  font-size: 13px;
+}
+.sqlfoot__warn {
+  color: var(--secondary);
+  font-weight: 500;
+}
+.runlog {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+}
+.runlog li {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 2px 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 12px;
+}
+.runlog__time {
+  color: var(--muted);
+}
+.runlog__sql {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.runlog__text {
+  grid-column: 2;
+  color: var(--secondary);
+}
+.runlog__bad .runlog__text {
+  color: var(--danger);
+}

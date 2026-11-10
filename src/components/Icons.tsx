@@ -60,6 +60,12 @@ export const TableIcon = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+export const QueryIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="M4 17l6-5-6-5M12 19h8" />
+  </svg>
+);
+
 export const DatabaseIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base} {...p}>
     <ellipse cx="12" cy="5" rx="8" ry="3" />

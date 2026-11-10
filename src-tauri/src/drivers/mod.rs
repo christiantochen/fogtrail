@@ -311,6 +311,19 @@ pub struct RowPage {
     pub has_more: bool,
 }
 
+/// What a query from the editor returned.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryResult {
+    pub columns: Vec<ResultColumn>,
+    pub rows: Vec<Vec<Option<String>>>,
+    /// The query had more rows than the limit; the rest were not read.
+    pub truncated: bool,
+    /// The most rows a query returns.
+    pub row_limit: u32,
+    pub elapsed_ms: u64,
+}
+
 /// Stores browsed as schemas, tables and rows (MySQL).
 #[async_trait]
 pub trait SqlDriver: Driver {
@@ -324,4 +337,15 @@ pub trait SqlDriver: Driver {
         offset: u64,
         count: u32,
     ) -> Result<RowPage, AppError>;
+    /// Runs one read-only statement typed by the person. The statement is checked
+    /// by `sql_guard` first. `schema` is the database unqualified names refer to;
+    /// `run_id` lets `cancel_query` find the statement while it runs.
+    async fn run_query(
+        &self,
+        sql: &str,
+        schema: Option<&str>,
+        run_id: &str,
+    ) -> Result<QueryResult, AppError>;
+    /// Stops the statement started with this `run_id`. Does nothing if it has finished.
+    async fn cancel_query(&self, run_id: &str) -> Result<(), AppError>;
 }

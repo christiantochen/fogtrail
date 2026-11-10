@@ -5,6 +5,8 @@
 //! prove the server refuses writes from Fogtrail's read-only session.
 
 use std::str::FromStr;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use fogtrail_lib::connections::Connections;
 use fogtrail_lib::drivers::mysql::{self, MySqlDriver};
@@ -318,4 +320,199 @@ async fn a_saved_mysql_profile_connects_and_browses() {
         AppError::InvalidArgument(_)
     ));
     let _ = std::fs::remove_dir_all(dir);
+}
+
+// --- the query editor ---------------------------------------------------------
+
+async fn run(d: &MySqlDriver, sql: &str) -> Result<fogtrail_lib::drivers::QueryResult, AppError> {
+    d.run_query(sql, None, "test").await
+}
+
+#[tokio::test]
+async fn a_select_returns_columns_rows_and_keeps_null_apart_from_empty() {
+    let d = driver_or_skip!();
+    let r = run(
+        &d,
+        "SELECT 1 AS one, NULL AS nothing, '' AS blank, 'é' AS accent",
+    )
+    .await
+    .unwrap();
+    let names: Vec<_> = r.columns.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["one", "nothing", "blank", "accent"]);
+    assert_eq!(
+        r.rows,
+        vec![vec![
+            Some("1".to_string()),
+            None,
+            Some(String::new()),
+            Some("é".to_string())
+        ]]
+    );
+    assert!(!r.truncated);
+    assert_eq!(r.row_limit, 1000);
+}
+
+#[tokio::test]
+async fn show_describe_explain_and_with_all_run() {
+    let d = driver_or_skip!();
+    for sql in [
+        "SHOW TABLES",
+        "SHOW COLUMNS FROM customers",
+        "DESCRIBE customers",
+        "EXPLAIN SELECT * FROM customers",
+        "WITH c AS (SELECT id FROM customers) SELECT COUNT(*) FROM c",
+        "SELECT * FROM customers LIMIT 2;",
+    ] {
+        let r = run(&d, sql).await.unwrap_or_else(|e| panic!("{sql}: {e}"));
+        assert!(!r.columns.is_empty(), "{sql} should have columns");
+    }
+}
+
+#[tokio::test]
+async fn an_empty_result_still_has_its_columns() {
+    let d = driver_or_skip!();
+    let r = run(&d, "SELECT id, kind FROM events WHERE 1 = 0")
+        .await
+        .unwrap();
+    assert!(r.rows.is_empty());
+    let names: Vec<_> = r.columns.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["id", "kind"]);
+}
+
+#[tokio::test]
+async fn a_blocked_statement_is_refused_before_it_reaches_the_server() {
+    let d = driver_or_skip!();
+    let before = run(&d, "SELECT COUNT(*) FROM events").await.unwrap().rows;
+    for sql in [
+        "DELETE FROM events",
+        "UPDATE events SET kind = 'x'",
+        "DROP TABLE events",
+        "SELECT 1; DELETE FROM events",
+        "SELECT * FROM events INTO OUTFILE '/tmp/fogtrail-test'",
+        "SET SESSION TRANSACTION READ WRITE",
+    ] {
+        match run(&d, sql).await {
+            Err(AppError::Blocked(m)) => assert!(m.contains("Nothing was sent"), "{sql}: {m}"),
+            other => panic!("{sql} should be blocked, got {other:?}"),
+        }
+    }
+    let after = run(&d, "SELECT COUNT(*) FROM events").await.unwrap().rows;
+    assert_eq!(before, after);
+}
+
+#[tokio::test]
+async fn a_server_error_comes_back_in_the_servers_words() {
+    let d = driver_or_skip!();
+    match run(&d, "SELECT * FROM no_such_table").await {
+        Err(AppError::Sql(m)) => assert!(m.contains("no_such_table"), "{m}"),
+        other => panic!("expected a SQL error, got {other:?}"),
+    }
+    // The connection still works afterwards.
+    assert!(run(&d, "SELECT 1").await.is_ok());
+}
+
+#[tokio::test]
+async fn a_big_result_stops_at_the_limit_and_the_pool_stays_healthy() {
+    let d = driver_or_skip!();
+    // 250 x 250 rows.
+    let r = run(&d, "SELECT a.id, b.id FROM events a CROSS JOIN events b")
+        .await
+        .unwrap();
+    assert_eq!(r.rows.len(), 1000);
+    assert!(r.truncated);
+    // Several runs in a row: each one detached its connection, so the pool must keep up.
+    for _ in 0..6 {
+        let r = run(&d, "SELECT a.id FROM events a CROSS JOIN events b")
+            .await
+            .unwrap();
+        assert!(r.truncated);
+    }
+    assert!(!run(&d, "SELECT 1").await.unwrap().truncated);
+}
+
+#[tokio::test]
+async fn exactly_the_limit_is_not_truncated() {
+    let d = driver_or_skip!();
+    let r = run(
+        &d,
+        "SELECT a.id FROM events a CROSS JOIN events b LIMIT 1000",
+    )
+    .await
+    .unwrap();
+    assert_eq!(r.rows.len(), 1000);
+    assert!(!r.truncated);
+}
+
+#[tokio::test]
+async fn a_slow_query_is_stopped_at_the_time_limit() {
+    let Some(url) = url() else { return };
+    let d = MySqlDriver::new(MySqlConnectOptions::from_str(&url).unwrap()).with_query_seconds(2);
+    let started = Instant::now();
+    // 250^4 row combinations: far more work than two seconds allow.
+    match run(
+        &d,
+        "SELECT SUM(a.id * b.id + c.id * d.id) FROM events a, events b, events c, events d",
+    )
+    .await
+    {
+        Err(AppError::Sql(m)) => assert!(m.contains("more than 2 seconds"), "{m}"),
+        other => panic!("expected a timeout, got {other:?}"),
+    }
+    assert!(started.elapsed() < Duration::from_secs(8));
+    // The connection is usable after a timeout.
+    assert!(run(&d, "SELECT 1").await.is_ok());
+}
+
+#[tokio::test]
+async fn a_running_query_can_be_cancelled() {
+    let Some(url) = url() else { return };
+    let d = Arc::new(MySqlDriver::new(
+        MySqlConnectOptions::from_str(&url).unwrap(),
+    ));
+    let running = {
+        let d = Arc::clone(&d);
+        tokio::spawn(async move { d.run_query("SELECT SLEEP(20)", None, "slow").await })
+    };
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    let started = Instant::now();
+    d.cancel_query("slow").await.unwrap();
+    match running.await.unwrap() {
+        Err(AppError::Sql(m)) => assert_eq!(m, "Stopped."),
+        // MySQL answers an interrupted SLEEP() with a row (1) instead of an error.
+        Ok(r) => assert_eq!(r.rows, vec![vec![Some("1".to_string())]]),
+        other => panic!("unexpected outcome: {other:?}"),
+    }
+    assert!(started.elapsed() < Duration::from_secs(5));
+    assert!(run(&d, "SELECT 1").await.is_ok());
+}
+
+#[tokio::test]
+async fn cancelling_something_that_is_not_running_does_nothing() {
+    let d = driver_or_skip!();
+    d.cancel_query("never-ran").await.unwrap();
+}
+
+#[tokio::test]
+async fn unqualified_names_use_the_schema_that_was_asked_for() {
+    let d = driver_or_skip!();
+    let r = d
+        .run_query("SELECT COUNT(*) FROM customers", Some("shop"), "t")
+        .await
+        .unwrap();
+    assert_eq!(r.rows.len(), 1);
+    // Another schema, and a name that needs quoting.
+    let other = d
+        .run_query("SELECT DATABASE()", Some("information_schema"), "t")
+        .await
+        .unwrap();
+    assert_eq!(
+        other.rows,
+        vec![vec![Some("information_schema".to_string())]]
+    );
+    match d.run_query("SELECT 1", Some("no`such"), "t").await {
+        Err(AppError::Sql(_)) | Err(AppError::Connect(_)) => {}
+        other => panic!("an unknown schema should fail cleanly, got {other:?}"),
+    }
+    // The next run on the same pool is unaffected.
+    assert!(d.run_query("SELECT 1", Some("shop"), "t").await.is_ok());
 }

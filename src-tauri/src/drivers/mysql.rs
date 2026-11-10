@@ -3,22 +3,26 @@
 //! SELECT statements itself. A read-only MySQL user adds a third layer on the
 //! server side; the README says how to make one.
 
-use std::time::Duration;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use futures_util::StreamExt;
 use sqlx::mysql::{
     MySqlConnectOptions, MySqlDatabaseError, MySqlPoolOptions, MySqlRow, MySqlSslMode,
 };
-use sqlx::{Column, Row, TypeInfo};
+use sqlx::{Column, Executor, Row, TypeInfo};
 use sqlx::{MySqlPool, ValueRef};
 use tokio::sync::OnceCell;
 
 use super::{
-    ColumnInfo, ConnectionInfo, Driver, ForeignKeyInfo, IndexInfo, Probe, ResultColumn, RowPage,
-    SchemaInfo, SqlDriver, TableInfo, TableStructure,
+    ColumnInfo, ConnectionInfo, Driver, ForeignKeyInfo, IndexInfo, Probe, QueryResult,
+    ResultColumn, RowPage, SchemaInfo, SqlDriver, TableInfo, TableStructure,
 };
 use crate::error::AppError;
 use crate::profiles::Profile;
+use crate::sql_guard;
 
 /// Rows per page when the caller doesn't say, and the most it may ask for.
 const PAGE_ROWS: u32 = 100;
@@ -27,19 +31,38 @@ const PAGE_ROWS_MAX: u32 = 500;
 const CELL_CHARS: usize = 2000;
 /// Most bytes of a binary cell that are rendered as hex.
 const CELL_HEX_BYTES: usize = 1024;
+/// The most rows the query editor returns.
+pub const QUERY_ROWS: u32 = 1000;
+/// The longest a statement may run, in seconds. The server enforces it for
+/// SELECT; the driver enforces it for everything else (a little later, so the
+/// server's own message wins when it can give one).
+pub const QUERY_SECONDS: u64 = 30;
 const SYSTEM_SCHEMAS: [&str; 4] = ["information_schema", "mysql", "performance_schema", "sys"];
 
 /// Pool settings, public so tests can check the read-only session on the real thing.
 pub fn pool_options() -> MySqlPoolOptions {
+    pool_options_with(QUERY_SECONDS)
+}
+
+fn pool_options_with(query_seconds: u64) -> MySqlPoolOptions {
     MySqlPoolOptions::new()
         .max_connections(4)
         // Fail fast: a wrong host should show an error in seconds.
         .acquire_timeout(Duration::from_secs(5))
-        .after_connect(|conn, _meta| {
+        .after_connect(move |conn, _meta| {
             Box::pin(async move {
                 sqlx::query("SET SESSION TRANSACTION READ ONLY")
                     .execute(&mut *conn)
                     .await?;
+                // Stops a SELECT that runs too long. A server without this variable
+                // (MariaDB calls it max_statement_time) just doesn't get the limit; the
+                // driver's own deadline still applies.
+                let _ = sqlx::query(&format!(
+                    "SET SESSION max_execution_time = {}",
+                    query_seconds * 1000
+                ))
+                .execute(&mut *conn)
+                .await;
                 Ok(())
             })
         })
@@ -78,6 +101,10 @@ pub struct MySqlDriver {
     options: MySqlConnectOptions,
     address: String,
     pool: OnceCell<MySqlPool>,
+    /// Statements in flight: the editor's run id and the server's connection id,
+    /// so a cancel can send `KILL QUERY` to the right one.
+    running: Arc<Mutex<HashMap<String, u64>>>,
+    query_seconds: u64,
 }
 
 impl MySqlDriver {
@@ -87,14 +114,22 @@ impl MySqlDriver {
             options,
             address,
             pool: OnceCell::new(),
+            running: Arc::new(Mutex::new(HashMap::new())),
+            query_seconds: QUERY_SECONDS,
         }
+    }
+
+    /// A shorter time limit, so tests don't have to wait 30 seconds.
+    pub fn with_query_seconds(mut self, seconds: u64) -> Self {
+        self.query_seconds = seconds;
+        self
     }
 
     /// Connects on first use. A failed attempt leaves nothing behind, so the next call retries.
     async fn pool(&self) -> Result<&MySqlPool, AppError> {
         self.pool
             .get_or_try_init(|| async {
-                pool_options()
+                pool_options_with(self.query_seconds)
                     .connect_with(self.options.clone())
                     .await
                     .map_err(|e| to_app_error(e, &self.address))
@@ -365,9 +400,105 @@ impl SqlDriver for MySqlDriver {
             has_more,
         })
     }
+
+    async fn run_query(
+        &self,
+        sql: &str,
+        schema: Option<&str>,
+        run_id: &str,
+    ) -> Result<QueryResult, AppError> {
+        // Nothing reaches the server until the guard has said yes.
+        sql_guard::check(sql)?;
+        let pool = self.pool().await?;
+        let mut conn = pool.acquire().await.map_err(|e| self.err(e))?;
+        // Unqualified table names mean the schema open in the UI. A pooled connection
+        // may have been left on another one, so say it every time. The name is quoted,
+        // and the server refuses one that doesn't exist.
+        if let Some(schema) = schema.map(str::trim).filter(|s| !s.is_empty()) {
+            let use_schema = format!("USE {}", quote_ident(schema));
+            conn.execute(use_schema.as_str())
+                .await
+                .map_err(|e| self.err(e))?;
+        }
+        let connection_id: u64 = sqlx::query("SELECT CONNECTION_ID()")
+            .fetch_one(&mut *conn)
+            .await
+            .map_err(|e| self.err(e))
+            .map(|r| r.try_get_unchecked::<u64, _>(0).unwrap_or(0))?;
+        let _registered = Registered::new(&self.running, run_id, connection_id);
+
+        let started = Instant::now();
+        let read = read_rows(&mut conn, sql);
+        let outcome =
+            match tokio::time::timeout(Duration::from_secs(self.query_seconds + 2), read).await {
+                Ok(done) => done,
+                Err(_) => {
+                    // The deadline passed without a reply: stop the statement on the server.
+                    self.kill(connection_id).await;
+                    return Err(timed_out(self.query_seconds));
+                }
+            };
+        let (columns, rows, truncated) = match outcome {
+            Ok(v) => v,
+            Err(e) => return Err(self.query_error(e)),
+        };
+        if truncated {
+            // Stopped reading with rows still on the wire, so this connection can't be
+            // reused. Detach it and let the pool open a fresh one.
+            drop(conn.detach());
+        }
+        Ok(QueryResult {
+            columns,
+            rows,
+            truncated,
+            row_limit: QUERY_ROWS,
+            elapsed_ms: started.elapsed().as_millis() as u64,
+        })
+    }
+
+    async fn cancel_query(&self, run_id: &str) -> Result<(), AppError> {
+        let id = self
+            .running
+            .lock()
+            .ok()
+            .and_then(|m| m.get(run_id).copied());
+        if let Some(id) = id {
+            self.kill(id).await;
+        }
+        Ok(())
+    }
 }
 
 impl MySqlDriver {
+    /// `KILL QUERY` on another connection. Best effort: if it fails, the deadline still ends the wait.
+    async fn kill(&self, connection_id: u64) {
+        if connection_id == 0 {
+            return;
+        }
+        if let Ok(pool) = self.pool().await {
+            let _ = sqlx::query(&format!("KILL QUERY {connection_id}"))
+                .execute(pool)
+                .await;
+        }
+    }
+
+    /// The server's own words, except for the two ways a statement is stopped on purpose.
+    fn query_error(&self, e: sqlx::Error) -> AppError {
+        if let sqlx::Error::Database(db) = &e {
+            match db
+                .try_downcast_ref::<MySqlDatabaseError>()
+                .map(MySqlDatabaseError::number)
+            {
+                // 3024: max_execution_time was exceeded.
+                Some(3024) => return timed_out(self.query_seconds),
+                // 1317: the statement was interrupted by KILL QUERY.
+                Some(1317) => return AppError::Sql("Stopped.".to_string()),
+                _ => {}
+            }
+        }
+        self.err(e)
+    }
+
     async fn column_names(&self, schema: &str, table: &str) -> Result<Vec<ResultColumn>, AppError> {
         let pool = self.pool().await?;
         let rows = sqlx::query(
@@ -388,6 +519,90 @@ impl MySqlDriver {
             })
             .collect())
     }
+}
+
+/// Registers a running statement for as long as it runs.
+struct Registered {
+    running: Arc<Mutex<HashMap<String, u64>>>,
+    run_id: String,
+}
+
+impl Registered {
+    fn new(running: &Arc<Mutex<HashMap<String, u64>>>, run_id: &str, connection_id: u64) -> Self {
+        if let Ok(mut m) = running.lock() {
+            m.insert(run_id.to_string(), connection_id);
+        }
+        Self {
+            running: Arc::clone(running),
+            run_id: run_id.to_string(),
+        }
+    }
+}
+
+impl Drop for Registered {
+    fn drop(&mut self) {
+        if let Ok(mut m) = self.running.lock() {
+            m.remove(&self.run_id);
+        }
+    }
+}
+
+fn timed_out(seconds: u64) -> AppError {
+    AppError::Sql(format!(
+        "The query ran for more than {seconds} seconds and was stopped."
+    ))
+}
+
+type Rows = (Vec<ResultColumn>, Vec<Vec<Option<String>>>, bool);
+
+/// Reads up to [`QUERY_ROWS`] rows, one at a time. `raw_sql` uses the text
+/// protocol, so every value arrives as text, the same as in the table view.
+async fn read_rows(conn: &mut sqlx::MySqlConnection, sql: &str) -> Result<Rows, sqlx::Error> {
+    let mut columns: Vec<ResultColumn> = Vec::new();
+    let mut rows: Vec<Vec<Option<String>>> = Vec::new();
+    let mut truncated = false;
+    {
+        let mut stream = sqlx::raw_sql(sql).fetch(&mut *conn);
+        while let Some(row) = stream.next().await {
+            let row = row?;
+            if columns.is_empty() {
+                columns = result_columns(&row);
+            }
+            if rows.len() >= QUERY_ROWS as usize {
+                truncated = true;
+                break;
+            }
+            rows.push(
+                (0..row.len())
+                    .map(|i| cell(&row, i, row.columns()[i].type_info().name()))
+                    .collect(),
+            );
+        }
+    }
+    // No rows means no row to read the column names from. Ask the server to describe it.
+    if columns.is_empty() {
+        if let Ok(d) = conn.describe(sql).await {
+            columns = d
+                .columns()
+                .iter()
+                .map(|c| ResultColumn {
+                    name: c.name().to_string(),
+                    type_name: c.type_info().name().to_string(),
+                })
+                .collect();
+        }
+    }
+    Ok((columns, rows, truncated))
+}
+
+fn result_columns(row: &MySqlRow) -> Vec<ResultColumn> {
+    row.columns()
+        .iter()
+        .map(|c| ResultColumn {
+            name: c.name().to_string(),
+            type_name: c.type_info().name().to_string(),
+        })
+        .collect()
 }
 
 /// Quotes a schema, table or column name for use in SQL.
