@@ -23,6 +23,9 @@ pub enum AppError {
     /// The SQL server refused or failed a statement. The message is the server's own.
     #[error("{0}")]
     Sql(String),
+    /// The query editor refused a statement before it was sent (see `sql_guard`).
+    #[error("{0}")]
+    Blocked(String),
 }
 
 impl AppError {
@@ -36,6 +39,7 @@ impl AppError {
             AppError::Secret(_) => "secret",
             AppError::Redis(_) => "redis",
             AppError::Sql(_) => "sql",
+            AppError::Blocked(_) => "blocked",
         }
     }
 }
