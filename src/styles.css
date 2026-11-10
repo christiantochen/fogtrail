@@ -1904,19 +1904,71 @@ select option {
 .editor__lines {
   padding: 0 10px 0 0;
 }
-.editor__text {
+.editorwrap {
+  position: relative;
+  flex: none;
+}
+.editor__pane {
+  position: relative;
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+}
+.editor__probe {
+  position: absolute;
+  visibility: hidden;
+  white-space: pre;
+}
+.editor__hl,
+.editor__text {
   padding: 10px 12px;
+  font: inherit;
+  line-height: inherit;
+  white-space: pre;
+  tab-size: 8;
+  letter-spacing: normal;
+}
+.editor__hl {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  color: var(--ink);
+  pointer-events: none;
+}
+.editor__text {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  margin: 0;
   border: 0;
   outline: 0;
   resize: none;
   background: transparent;
-  color: var(--ink);
-  font: inherit;
-  line-height: inherit;
-  white-space: pre;
+  /* The colours underneath show through; only the caret is drawn here. */
+  color: transparent;
+  caret-color: var(--ink);
   overflow: auto;
+}
+.editor__text::placeholder {
+  color: var(--muted);
+}
+.editor__text::selection {
+  background: rgb(242 179 61 / 40%);
+}
+.tk-kw {
+  color: var(--json-key);
+}
+.tk-str {
+  color: var(--green);
+}
+.tk-num {
+  color: var(--json-num);
+}
+.tk-cm {
+  color: var(--muted);
 }
 .editor:focus-within {
   box-shadow: inset 0 0 0 2px var(--amber);
@@ -1969,4 +2021,66 @@ select option {
 }
 .runlog__bad .runlog__text {
   color: var(--danger);
+}
+
+/* Suggestions under the caret */
+.complete {
+  position: absolute;
+  z-index: 20;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 248px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 8px 24px rgb(24 33 43 / 16%);
+}
+.complete__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.complete__row:hover {
+  background: var(--hover);
+}
+.complete__row[aria-selected="true"] {
+  background: var(--selected);
+  color: var(--selected-ink);
+}
+.complete__tag {
+  flex: none;
+  width: 32px;
+  padding: 1px 0;
+  border-radius: 4px;
+  background: var(--chip);
+  color: var(--chip-ink);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10.5px;
+  text-align: center;
+}
+.complete__tag--column {
+  color: var(--json-key);
+}
+.complete__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.complete__detail {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 11px;
 }
