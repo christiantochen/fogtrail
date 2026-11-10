@@ -806,3 +806,68 @@ test.describe("database picker and server info", () => {
     await expect(version).toHaveAttribute("aria-pressed", "false");
   });
 });
+
+test.describe("memory meter", () => {
+  test("Server info shows how full memory is", async ({ page }) => {
+    await openBrowse(page);
+    await page.getByRole("button", { name: "Redis 6.2.14" }).click();
+    await expect(page.getByText("24.6 MB of 28.6 MB")).toBeVisible();
+    const meter = page.getByRole("meter", { name: "Memory used" });
+    await expect(meter).toHaveAttribute("aria-valuenow", "86");
+    await expect(meter).toHaveClass(/meter--warn/);
+    await expect(page.getByText("· 86%")).toBeVisible();
+  });
+});
+
+test.describe("type filter and sort", () => {
+  async function open(page: Page, names: string[]) {
+    await page.clock.install();
+    await stubBackend(page, names);
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: "Connect", exact: true })
+      .first()
+      .click();
+    await page.getByLabel("Switch connection").waitFor();
+    await page.getByLabel("Folder delimiter").fill("");
+  }
+  const rows = (page: Page) => page.locator("button.row .row__label");
+
+  test("a type chip limits the list to that type, and All brings it back", async ({
+    page,
+  }) => {
+    await open(page, ["hash:a", "hash:b", "plain"]);
+    await expect(rows(page).filter({ hasText: "plain" })).toHaveCount(1);
+    await page.getByRole("button", { name: "HASH", exact: true }).click();
+    await expect(rows(page)).toHaveText(["hash:a", "hash:b"]);
+    await expect(page.getByText("Hashes · 2")).toBeVisible();
+    await page.getByRole("button", { name: "All" }).click();
+    await expect(rows(page).filter({ hasText: "plain" })).toHaveCount(1);
+  });
+
+  test("Expiry shows keys with a TTL, soonest first, as a flat list", async ({
+    page,
+  }) => {
+    await open(page, ["plain", "temp:x", "soon:y"]);
+    await page.getByLabel("Sort keys").selectOption("expiry");
+    await expect(rows(page)).toHaveText(["soon:y", "temp:x"]);
+    await expect(page.getByText(/Expiring · 2/)).toBeVisible();
+    await page.getByLabel("Sort keys").selectOption("name");
+    await expect(rows(page).filter({ hasText: "plain" })).toHaveCount(1);
+  });
+
+  test("filter and sort are forgotten on a new connection", async ({
+    page,
+  }) => {
+    await open(page, ["hash:a", "plain"]);
+    await page.getByRole("button", { name: "HASH", exact: true }).click();
+    await page.getByLabel("Sort keys").selectOption("expiry");
+    await page.getByLabel("Switch connection").selectOption("2");
+    await expect(page.getByLabel("Switch connection")).toHaveValue("2");
+    await expect(page.getByLabel("Sort keys")).toHaveValue("name");
+    await expect(page.getByRole("button", { name: "All" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+});

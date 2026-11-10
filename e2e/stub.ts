@@ -123,9 +123,16 @@ export async function stubBackend(page: Page, extraKeys: string[] = []) {
                   .filter((n) => re.test(n))
                   .map((name) => ({
                     name,
-                    kind: "string",
-                    ttlSeconds: name.startsWith("temp:") ? 90 : null,
-                  })),
+                    kind: name.startsWith("hash:") ? "hash" : "string",
+                    ttlSeconds: name.startsWith("temp:")
+                      ? 90
+                      : name.startsWith("soon:")
+                        ? 30
+                        : null,
+                  }))
+                  .filter(
+                    (n) => !args.kind || (args.kind as string) === n.kind,
+                  ),
                 nextCursor: null,
               };
             }
@@ -210,6 +217,8 @@ export async function stubBackend(page: Page, extraKeys: string[] = []) {
               return {
                 product: "Redis",
                 version: "6.2.14",
+                usedMemory: 25_800_000,
+                maxMemory: 30_000_000,
                 databases: [{ index: 0, keys: keys.length, expires: 0 }],
                 // Tests set __DB_COUNT__ to 1 or null to mimic a one-database or a CONFIG-less server.
                 databaseCount:

@@ -33,6 +33,17 @@ export function ttlLabel(
   return { text: formatTtlShort(left), expired: false };
 }
 
+/** How full memory is, for the Server info meter. `null` when there is no limit to compare to. */
+export function memoryUsage(
+  used: number | null,
+  max: number | null,
+): { percent: number; level: "ok" | "warn" | "bad" } | null {
+  if (used === null || !max) return null;
+  const percent = Math.min(100, Math.round((used / max) * 100));
+  const level = percent > 95 ? "bad" : percent > 80 ? "warn" : "ok";
+  return { percent, level };
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;

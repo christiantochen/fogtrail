@@ -31,6 +31,17 @@ export function splitName(name: string, delimiter: string): string[] {
   return parts;
 }
 
+/** One row per key, in the order given: for lists the tree would only reshuffle. */
+export function flatNodes(keys: KeyNode[]): TreeNode[] {
+  return keys.map((key) => ({
+    label: key.name,
+    path: key.name,
+    key,
+    children: [],
+    count: 1,
+  }));
+}
+
 /** Groups flat key names into a tree by splitting on the characters of `delimiter`. */
 export function buildTree(keys: KeyNode[], delimiter = ":"): TreeNode[] {
   // Paths are joined with the first separator, so `a:b` and `a/b` share a folder.

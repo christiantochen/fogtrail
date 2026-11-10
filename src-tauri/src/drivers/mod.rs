@@ -25,6 +25,8 @@ pub struct BrowseQuery {
     pub pattern: Option<String>,
     pub cursor: Option<String>,
     pub count: u32,
+    /// Only keys of this type (`string`, `hash`, `list`, `set`, `zset` or `stream`).
+    pub kind: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

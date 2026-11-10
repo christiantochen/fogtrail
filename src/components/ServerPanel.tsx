@@ -1,5 +1,5 @@
 import { useServerInfo } from "../api/queries";
-import { formatBytes, formatUptime, hitRate } from "../lib/format";
+import { formatBytes, formatUptime, hitRate, memoryUsage } from "../lib/format";
 
 export function ServerPanel() {
   const q = useServerInfo(true);
@@ -24,6 +24,7 @@ export function ServerPanel() {
 
   const s = q.data;
   const rate = hitRate(s.hits, s.misses);
+  const mem = memoryUsage(s.usedMemory, s.maxMemory);
   const totalKeys = s.databases.reduce((n, d) => n + d.keys, 0);
   const stats: [string, string][] = [
     ["Uptime", s.uptimeSeconds === null ? "—" : formatUptime(s.uptimeSeconds)],
@@ -58,7 +59,30 @@ export function ServerPanel() {
         {stats.map(([label, value]) => (
           <div className="stat" key={label}>
             <dt>{label}</dt>
-            <dd>{value}</dd>
+            <dd>
+              {value}
+              {label === "Memory" && mem && (
+                <span className={`stat__pct stat__pct--${mem.level}`}>
+                  {" "}
+                  · {mem.percent}%
+                </span>
+              )}
+            </dd>
+            {label === "Memory" && mem && (
+              <div
+                className={`meter meter--${mem.level}`}
+                role="meter"
+                aria-label="Memory used"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={mem.percent}
+              >
+                <div
+                  className="meter__fill"
+                  style={{ width: `${mem.percent}%` }}
+                />
+              </div>
+            )}
           </div>
         ))}
       </dl>

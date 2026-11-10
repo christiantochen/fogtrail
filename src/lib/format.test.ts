@@ -9,6 +9,7 @@ import {
   hitRate,
   formatTtlShort,
   ttlLabel,
+  memoryUsage,
   hexDump,
   tryPrettyJson,
   typeBadge,
@@ -128,5 +129,26 @@ describe("ttlLabel", () => {
   it("shows nothing without a TTL and ignores a clock that is behind", () => {
     expect(ttlLabel(null, 0, 5000)).toBeNull();
     expect(ttlLabel(90, 10_000, 0)).toEqual({ text: "2m", expired: false });
+  });
+});
+
+describe("memoryUsage", () => {
+  it("is a percentage with a level", () => {
+    expect(memoryUsage(12_300_000, 30_000_000)).toEqual({
+      percent: 41,
+      level: "ok",
+    });
+    expect(memoryUsage(80, 100)?.level).toBe("ok");
+    expect(memoryUsage(81, 100)?.level).toBe("warn");
+    expect(memoryUsage(95, 100)?.level).toBe("warn");
+    expect(memoryUsage(96, 100)?.level).toBe("bad");
+  });
+  it("never goes past 100", () => {
+    expect(memoryUsage(150, 100)).toEqual({ percent: 100, level: "bad" });
+  });
+  it("has nothing to compare to without a limit", () => {
+    expect(memoryUsage(10, 0)).toBeNull();
+    expect(memoryUsage(10, null)).toBeNull();
+    expect(memoryUsage(null, 100)).toBeNull();
   });
 });

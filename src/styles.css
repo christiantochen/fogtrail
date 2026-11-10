@@ -777,6 +777,7 @@ table.grid {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
 }
 .delim {
   display: inline-flex;
@@ -1533,4 +1534,78 @@ select option {
 .card__chev {
   width: 11px;
   height: 11px;
+}
+
+/* Key type chips and the sort choice */
+.kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.kind {
+  min-height: 24px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--chip-ink);
+  font-size: 11px;
+  font-weight: 500;
+}
+.kind:hover {
+  background: var(--hover);
+}
+.kind[aria-pressed="true"] {
+  background: var(--selected);
+  color: var(--selected-ink);
+}
+.sortpick,
+.delim {
+  white-space: nowrap;
+}
+.sortpick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.sortpick select {
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+}
+
+/* Memory meter */
+.stat__pct {
+  font-size: 13px;
+  color: var(--secondary);
+}
+.stat__pct--warn {
+  color: var(--json-num);
+  font-weight: 600;
+}
+.stat__pct--bad {
+  color: var(--danger);
+  font-weight: 600;
+}
+.meter {
+  margin-top: 10px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--chip);
+  overflow: hidden;
+}
+.meter__fill {
+  height: 100%;
+  background: var(--green);
+}
+.meter--warn .meter__fill {
+  background: var(--amber);
+}
+.meter--bad .meter__fill {
+  background: var(--danger);
 }

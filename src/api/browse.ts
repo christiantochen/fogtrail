@@ -41,6 +41,8 @@ export const scanKeys = (args: {
   pattern?: string;
   cursor?: string | null;
   count?: number;
+  /** Only keys of this type: string, hash, list, set, zset or stream. */
+  kind?: string | null;
 }) => call<Page<KeyNode>>("scan_keys", args);
 
 export const getKey = (name: string) => call<Detail>("get_key", { name });

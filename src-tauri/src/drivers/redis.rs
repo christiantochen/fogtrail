@@ -144,6 +144,30 @@ pub fn parse_keyspace(fields: &std::collections::HashMap<String, String>) -> Vec
     dbs
 }
 
+/// The key types SCAN can filter by. Anything else is rejected before it reaches the server.
+const SCAN_KINDS: [&str; 6] = ["string", "hash", "list", "set", "zset", "stream"];
+
+fn scan_kind(kind: Option<&str>) -> Result<Option<&'static str>, AppError> {
+    match kind.filter(|k| !k.is_empty()) {
+        None => Ok(None),
+        Some(k) => SCAN_KINDS
+            .iter()
+            .find(|known| **known == k)
+            .map(|known| Some(*known))
+            .ok_or_else(|| AppError::InvalidArgument(format!("Unknown key type: {k}"))),
+    }
+}
+
+/// Redis before 6.0 does not know `SCAN … TYPE` and answers with a syntax error.
+fn type_filter_error(filtered: bool, err: redis::RedisError) -> AppError {
+    let text = err.to_string();
+    if filtered && text.to_lowercase().contains("syntax error") {
+        AppError::InvalidArgument("The type filter needs Redis 6 or newer.".to_string())
+    } else {
+        err.into()
+    }
+}
+
 /// The reply to `CONFIG GET databases` is `["databases", "16"]`.
 pub fn parse_database_count(reply: &[String]) -> Option<u32> {
     match reply {
@@ -229,7 +253,14 @@ impl Driver for RedisDriver {
             scan.arg("MATCH").arg(pattern);
         }
         scan.arg("COUNT").arg(count);
-        let (next, keys): (String, Vec<Vec<u8>>) = scan.query_async(&mut conn).await?;
+        let kind = scan_kind(query.kind.as_deref())?;
+        if let Some(kind) = kind {
+            scan.arg("TYPE").arg(kind);
+        }
+        let (next, keys): (String, Vec<Vec<u8>>) = scan
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| type_filter_error(kind.is_some(), e))?;
 
         let mut items = Vec::with_capacity(keys.len());
         if !keys.is_empty() {
@@ -590,7 +621,9 @@ async fn read_stream(conn: &mut ConnectionManager, name: &str, key: &[u8]) -> Re
 
 #[cfg(test)]
 mod tests {
-    use super::{decrement_id, detect, parse_database_count, parse_info, parse_keyspace};
+    use super::{
+        decrement_id, detect, parse_database_count, parse_info, parse_keyspace, scan_kind,
+    };
     use crate::drivers::DatabaseInfo;
 
     #[test]
@@ -615,6 +648,16 @@ mod tests {
         );
         // Not a database line, so ignored.
         assert!(parse_keyspace(&parse_info("dbsize:3\r\n")).is_empty());
+    }
+
+    #[test]
+    fn only_known_key_types_are_filtered_on() {
+        assert_eq!(scan_kind(None).unwrap(), None);
+        assert_eq!(scan_kind(Some("")).unwrap(), None);
+        assert_eq!(scan_kind(Some("hash")).unwrap(), Some("hash"));
+        assert_eq!(scan_kind(Some("zset")).unwrap(), Some("zset"));
+        assert!(scan_kind(Some("hash COUNT 1")).is_err());
+        assert!(scan_kind(Some("HASH")).is_err());
     }
 
     #[test]

@@ -4,6 +4,7 @@ import { loadRefresh, saveRefresh } from "../lib/refresh";
 import { loadPins, savePins, togglePin } from "../lib/pins";
 import { loadRecent, pushRecent, saveRecent } from "../lib/recent";
 import { loadSession, type Session } from "../lib/session";
+import type { SortMode } from "../lib/keysort";
 import { ancestorsOf } from "../lib/tree";
 
 const DELIMITER_KEY = "fogtrail.delimiter";
@@ -43,6 +44,12 @@ interface UiState {
   view: "keys" | "server";
   selected: string | null;
   filter: string;
+  /** Only keys of this type (a SCAN TYPE), or null for all. Not remembered. */
+  kindFilter: string | null;
+  setKindFilter: (kind: string | null) => void;
+  /** Tree by name, or a flat list by soonest expiry. Not remembered. */
+  sort: SortMode;
+  setSort: (sort: SortMode) => void;
   /** Folder paths the user has opened. */
   expanded: ReadonlySet<string>;
   /** Quick open (Cmd/Ctrl+K) is showing. */
@@ -139,6 +146,10 @@ export const useUi = create<UiState>((set) => ({
   view: "keys",
   selected: null,
   filter: "",
+  kindFilter: null,
+  setKindFilter: (kindFilter) => set({ kindFilter }),
+  sort: "name",
+  setSort: (sort) => set({ sort }),
   expanded: new Set(),
   // Browsing state belongs to one connection, so it resets with it.
   setConnected: (connected, id) =>
@@ -154,6 +165,8 @@ export const useUi = create<UiState>((set) => ({
         launchError: null,
         selected: null,
         filter: "",
+        kindFilter: null,
+        sort: "name",
         expanded: new Set(),
         editing: null,
       };

@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useKeys } from "../api/queries";
 import { useUi } from "../state/ui";
 import { ConnectionSwitch } from "./ConnectionSwitch";
@@ -10,6 +10,7 @@ import { Chevron, Lock, Mark, Refresh } from "./Icons";
 import { globFor } from "../lib/tree";
 import { copyText } from "../lib/clipboard";
 import { useDebounced } from "../lib/useDebounced";
+import { KEY_KINDS, sortByExpiry } from "../lib/keysort";
 import { formatAgo } from "../lib/refresh";
 import { refreshAll } from "../lib/refreshAll";
 import { useNow } from "../lib/useNow";
@@ -25,7 +26,11 @@ export function Sidebar() {
   const setDelimiter = useUi((s) => s.setDelimiter);
   // Searching asks the server (SCAN MATCH), so it finds keys beyond the loaded pages.
   const term = useDebounced(filter.trim(), 250);
-  const keys = useKeys(term ? globFor(term) : undefined);
+  const kindFilter = useUi((s) => s.kindFilter);
+  const setKindFilter = useUi((s) => s.setKindFilter);
+  const sort = useUi((s) => s.sort);
+  const setSort = useUi((s) => s.setSort);
+  const keys = useKeys(term ? globFor(term) : undefined, kindFilter);
   const qc = useQueryClient();
   const now = useNow();
   const searching = term !== "";
@@ -75,6 +80,18 @@ export function Sidebar() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  const byExpiry = sort === "expiry";
+  const shown = useMemo(
+    () => (keys.data && byExpiry ? sortByExpiry(keys.data.items) : null),
+    [keys.data, byExpiry],
+  );
+  const kindName = KEY_KINDS.find((k) => k.id === kindFilter)?.plural;
+  const heading = byExpiry
+    ? "Expiring"
+    : searching
+      ? "Matches"
+      : (kindName ?? "Keys");
 
   const status = keys.isError ? "err" : keys.isSuccess ? "on" : "idle";
   const loaded = keys.data?.items.length ?? 0;
@@ -153,23 +170,60 @@ export function Sidebar() {
         </button>
       </div>
 
+      <div className="kinds" role="group" aria-label="Key type">
+        <button
+          type="button"
+          className="kind"
+          aria-pressed={kindFilter === null}
+          onClick={() => setKindFilter(null)}
+        >
+          All
+        </button>
+        {KEY_KINDS.map((k) => (
+          <button
+            key={k.id}
+            type="button"
+            className="kind mono"
+            aria-pressed={kindFilter === k.id}
+            onClick={() => setKindFilter(kindFilter === k.id ? null : k.id)}
+          >
+            {k.chip}
+          </button>
+        ))}
+      </div>
+
       {!searching && <Pinned />}
 
       <div className="keys-head">
         <div>
           <div className="section-label">
-            {searching ? "Matches" : "Keys"}
+            {heading}
             {keys.isSuccess
-              ? ` · ${loaded}${keys.data.hasMore ? "+" : ""}`
+              ? byExpiry
+                ? ` · ${shown?.length ?? 0}`
+                : ` · ${loaded}${keys.data.hasMore ? "+" : ""}`
               : ""}
           </div>
           {keys.isSuccess && (
             <div className="keys-head__scanned">
-              Scanned{" "}
+              {byExpiry ? `Of ${loaded} loaded · scanned ` : "Scanned "}
               {formatAgo(Math.max(0, (now - keys.dataUpdatedAt) / 1000))}
             </div>
           )}
         </div>
+        <label
+          className="sortpick"
+          title="Redis can't sort for us, so Expiry covers the keys loaded so far."
+        >
+          <select
+            aria-label="Sort keys"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as "name" | "expiry")}
+          >
+            <option value="name">Name</option>
+            <option value="expiry">Expiry</option>
+          </select>
+        </label>
         <label
           className="delim"
           title="Each character here splits key names into folders, so :/ splits on both. Empty for a flat list."
@@ -198,7 +252,11 @@ export function Sidebar() {
         </div>
       )}
       {keys.isSuccess && (
-        <KeyTree keys={keys.data.items} searching={searching} />
+        <KeyTree
+          keys={shown ?? keys.data.items}
+          searching={searching}
+          flat={byExpiry}
+        />
       )}
       {keys.isSuccess && keys.data.hasMore && (
         <button
