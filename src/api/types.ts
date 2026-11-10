@@ -4,6 +4,8 @@ export interface ConnectionInfo {
   driver: string;
   address: string;
   database: number;
+  /** Which screen to show: "keyValue" for Redis, Valkey and Dragonfly. */
+  store: "keyValue";
 }
 
 export interface KeyNode {
@@ -97,6 +99,8 @@ export interface Profile {
   port: number;
   username: string | null;
   database: number;
+  /** Default schema (MySQL database name). Null for Redis. */
+  schema: string | null;
   tls: boolean;
 }
 

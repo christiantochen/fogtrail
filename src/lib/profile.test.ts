@@ -37,6 +37,7 @@ describe("toProfile", () => {
       port: 6380,
       username: null,
       database: 0,
+      schema: null,
       id: "",
     });
   });

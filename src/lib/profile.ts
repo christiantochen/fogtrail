@@ -55,6 +55,7 @@ export function toProfile(d: Draft, id = "", driver = "redis"): Profile {
     port: Number(d.port),
     username: username === "" ? null : username,
     database: Number(d.database),
+    schema: null,
     tls: d.tls,
   };
 }

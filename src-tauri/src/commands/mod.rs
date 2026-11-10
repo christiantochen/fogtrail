@@ -76,7 +76,7 @@ pub async fn scan_keys(
     kind: Option<String>,
 ) -> Result<Page<Node>, AppError> {
     conns
-        .driver()?
+        .key_value()?
         .browse(BrowseQuery {
             pattern,
             cursor,
@@ -88,7 +88,7 @@ pub async fn scan_keys(
 
 #[tauri::command]
 pub async fn get_key(conns: State<'_, Connections>, name: String) -> Result<Detail, AppError> {
-    conns.driver()?.read(&name).await
+    conns.key_value()?.read(&name).await
 }
 
 #[tauri::command]
@@ -99,7 +99,7 @@ pub async fn stream_page(
     count: Option<u32>,
 ) -> Result<StreamPage, AppError> {
     conns
-        .driver()?
+        .key_value()?
         .stream_page(&name, &before, count.unwrap_or(100))
         .await
 }

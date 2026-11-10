@@ -5,7 +5,7 @@ use std::sync::{Arc, RwLock};
 use serde::Serialize;
 
 use crate::drivers::redis::RedisDriver;
-use crate::drivers::{ConnectionInfo, Driver, Probe, ServerInfo};
+use crate::drivers::{ConnectionInfo, KeyValueDriver, Probe, ServerInfo, Store};
 use crate::error::AppError;
 use crate::profiles::{Profile, ProfileStore};
 use crate::secrets::SecretStore;
@@ -30,7 +30,7 @@ impl From<Probe> for TestResult {
 
 struct Active {
     profile_id: String,
-    driver: Arc<dyn Driver>,
+    store: Store,
     info: ConnectionInfo,
 }
 
@@ -86,8 +86,8 @@ impl Connections {
     ) -> Result<TestResult, AppError> {
         profile.validate()?;
         let password = self.password_for(profile, password)?;
-        let driver = RedisDriver::new(profile.url(password.as_deref()));
-        Ok(driver.probe().await?.into())
+        let store = build_store(profile, password.as_deref())?;
+        Ok(store.driver().probe().await?.into())
     }
 
     pub async fn connect(&self, id: &str) -> Result<ConnectionInfo, AppError> {
@@ -107,12 +107,13 @@ impl Connections {
     }
 
     pub async fn server_info(&self) -> Result<ServerInfo, AppError> {
-        self.driver()?.server_info().await
+        self.key_value()?.server_info().await
     }
 
     async fn open(&self, profile: Profile) -> Result<ConnectionInfo, AppError> {
         let password = self.secrets.get(&profile.id)?;
-        let driver = Arc::new(RedisDriver::new(profile.url(password.as_deref())));
+        let store = build_store(&profile, password.as_deref())?;
+        let driver = store.driver();
         let probe = driver.probe().await?;
         let mut info = driver.describe();
         info.driver = format!("{} {}", probe.product, probe.version)
@@ -121,7 +122,7 @@ impl Connections {
         info.address = format!("{}:{}", profile.host, profile.port);
         *self.active.write().unwrap() = Some(Active {
             profile_id: profile.id.clone(),
-            driver,
+            store,
             info: info.clone(),
         });
         Ok(info)
@@ -131,12 +132,20 @@ impl Connections {
         *self.active.write().unwrap() = None;
     }
 
-    pub fn driver(&self) -> Result<Arc<dyn Driver>, AppError> {
+    /// The active connection as a key-value store (Redis and friends).
+    pub fn key_value(&self) -> Result<Arc<dyn KeyValueDriver>, AppError> {
+        let store = self.store()?;
+        match store {
+            Store::KeyValue(d) => Ok(d),
+        }
+    }
+
+    fn store(&self) -> Result<Store, AppError> {
         self.active
             .read()
             .unwrap()
             .as_ref()
-            .map(|a| a.driver.clone())
+            .map(|a| a.store.clone())
             .ok_or(AppError::NotConnected)
     }
 
@@ -167,6 +176,18 @@ impl Connections {
             None if !profile.id.is_empty() => self.secrets.get(&profile.id),
             None => Ok(None),
         }
+    }
+}
+
+/// Picks the driver a profile asks for. Nothing connects until `probe` is called.
+fn build_store(profile: &Profile, password: Option<&str>) -> Result<Store, AppError> {
+    match profile.driver.as_str() {
+        "redis" => Ok(Store::KeyValue(Arc::new(RedisDriver::new(
+            profile.url(password),
+        )))),
+        other => Err(AppError::InvalidArgument(format!(
+            "Unknown connection type: {other}"
+        ))),
     }
 }
 
@@ -217,14 +238,23 @@ mod tests {
             host: "127.0.0.1".into(),
             port: 1,
             username: None,
+            schema: None,
             database: 0,
             tls: false,
         }
     }
 
     #[test]
+    fn an_unknown_driver_is_refused_before_connecting() {
+        let mut p = profile();
+        p.driver = "oracle".into();
+        let err = build_store(&p, None).err().unwrap();
+        assert!(matches!(err, AppError::InvalidArgument(_)));
+    }
+
+    #[test]
     fn no_driver_until_connected() {
-        assert!(matches!(conns().driver(), Err(AppError::NotConnected)));
+        assert!(matches!(conns().key_value(), Err(AppError::NotConnected)));
         assert!(matches!(conns().info(), Err(AppError::NotConnected)));
     }
 
@@ -255,6 +285,6 @@ mod tests {
         let c = conns();
         let p = c.save(profile(), None).unwrap();
         assert!(matches!(c.connect(&p.id).await, Err(AppError::Connect(_))));
-        assert!(matches!(c.driver(), Err(AppError::NotConnected)));
+        assert!(matches!(c.key_value(), Err(AppError::NotConnected)));
     }
 }
