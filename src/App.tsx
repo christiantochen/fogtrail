@@ -9,6 +9,8 @@ import { MenuBridge } from "./components/MenuBridge";
 import { QuickOpen } from "./components/QuickOpen";
 import { Resuming } from "./components/Resuming";
 import { Sidebar } from "./components/Sidebar";
+import { SqlMain } from "./components/SqlMain";
+import { SqlSidebar } from "./components/SqlSidebar";
 import { persistSession } from "./state/persist";
 import { About } from "./components/About";
 import { TitleBar } from "./components/TitleBar";
@@ -25,6 +27,7 @@ const queryClient = new QueryClient({
 export default function App() {
   // A live connection with the connections screen open on top is not "browsing".
   const browsing = useUi((s) => s.connected !== null && !s.picking);
+  const sql = useUi((s) => s.connected?.store === "sql");
   const resuming = useUi((s) => s.resuming);
   // Wait to know who draws the window frame, so nothing jumps when the bar appears.
   const frameKnown = useUi((s) => s.customTitleBar !== null);
@@ -65,6 +68,11 @@ export default function App() {
             <div className="app">
               {resuming ? (
                 <Resuming />
+              ) : browsing && sql ? (
+                <>
+                  <SqlSidebar />
+                  <SqlMain />
+                </>
               ) : browsing ? (
                 <>
                   <Sidebar />

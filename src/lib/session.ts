@@ -7,6 +7,9 @@ export interface Session {
   expanded: string[];
   selected: string | null;
   filter: string;
+  /** SQL connections: the open schema and table. */
+  schema: string | null;
+  table: string | null;
 }
 
 /** Reads a saved session, or null when there is none or it is unusable. */
@@ -23,6 +26,8 @@ export function parseSession(raw: string | null): Session | null {
         : [],
       selected: typeof v.selected === "string" ? v.selected : null,
       filter: typeof v.filter === "string" ? v.filter : "",
+      schema: typeof v.schema === "string" ? v.schema : null,
+      table: typeof v.table === "string" ? v.table : null,
     };
   } catch {
     return null;

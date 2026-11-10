@@ -27,9 +27,28 @@ export const profiles = [
   },
 ];
 
-export async function stubBackend(page: Page, extraKeys: string[] = []) {
+// A MySQL connection, added only by tests that ask for it, so the Redis tests keep
+// seeing the two profiles above.
+export const mysqlProfile = {
+  id: "3",
+  name: "shop-prod",
+  driver: "mysql",
+  host: "db.internal",
+  port: 3306,
+  username: "fogtrail",
+  database: 0,
+  schema: "shop",
+  tls: false,
+};
+
+export async function stubBackend(
+  page: Page,
+  extraKeys: string[] = [],
+  options: { mysql?: boolean } = {},
+) {
   await page.addInitScript(
-    ([profiles, extra]) => {
+    ([base, extra, mysql]) => {
+      const profiles = mysql ? [...base, mysql] : [...base];
       const keys = [
         ...extra,
         "cache:user:1",
@@ -102,6 +121,13 @@ export async function stubBackend(page: Page, extraKeys: string[] = []) {
               )
                 throw { kind: "connect", message: "Connection refused" };
               const p = profiles.find((x) => x.id === args.id)!;
+              if (p.driver === "mysql")
+                return {
+                  driver: "MySQL 8.0.36",
+                  address: `${p.host}:${p.port}`,
+                  database: 0,
+                  store: "sql",
+                };
               return {
                 driver: "Redis 6.2.14",
                 address: `${p.host}:${p.port}`,
@@ -230,6 +256,151 @@ export async function stubBackend(page: Page, extraKeys: string[] = []) {
                         .__DB_COUNT__
                     : 16,
               };
+            case "test_connection": {
+              const prof = args.profile as { driver: string };
+              return prof.driver === "mysql"
+                ? { product: "MySQL", version: "8.0.36", keyCount: null }
+                : { product: "Redis", version: "6.2.14", keyCount: 7 };
+            }
+            case "list_schemas":
+              return [
+                { name: "analytics", system: false },
+                { name: "information_schema", system: true },
+                { name: "mysql", system: true },
+                { name: "shop", system: false },
+              ];
+            case "list_tables": {
+              const schema = (args as unknown as { schema: string }).schema;
+              if (schema !== "shop") return [];
+              return [
+                { name: "customers", kind: "table", estimatedRows: 1200 },
+                { name: "events", kind: "table", estimatedRows: 250 },
+                { name: "orders", kind: "table", estimatedRows: 48213 },
+                { name: "paying_customers", kind: "view", estimatedRows: null },
+                { name: "weird name", kind: "table", estimatedRows: 1 },
+              ];
+            }
+            case "table_structure": {
+              const t = (args as unknown as { table: string }).table;
+              const col = (
+                name: string,
+                dataType: string,
+                extra: Record<string, unknown> = {},
+              ) => ({
+                name,
+                dataType,
+                nullable: false,
+                key: null,
+                default: null,
+                extra: null,
+                comment: null,
+                ...extra,
+              });
+              if (t === "orders")
+                return {
+                  kind: "table",
+                  engine: "InnoDB",
+                  comment: null,
+                  columns: [
+                    col("id", "bigint unsigned", {
+                      key: "PRI",
+                      extra: "auto_increment",
+                    }),
+                    col("customer_id", "bigint unsigned", { key: "MUL" }),
+                    col("status", "enum('paid','pending')", {
+                      default: "pending",
+                    }),
+                    col("total", "decimal(10,2)"),
+                    col("notes", "varchar(255)", { nullable: true }),
+                  ],
+                  indexes: [
+                    {
+                      name: "PRIMARY",
+                      unique: true,
+                      columns: ["id"],
+                      indexType: "BTREE",
+                    },
+                    {
+                      name: "idx_customer",
+                      unique: false,
+                      columns: ["customer_id"],
+                      indexType: "BTREE",
+                    },
+                  ],
+                  foreignKeys: [
+                    {
+                      name: "fk_orders_customer",
+                      columns: ["customer_id"],
+                      refSchema: "shop",
+                      refTable: "customers",
+                      refColumns: ["id"],
+                    },
+                  ],
+                };
+              return {
+                kind: t === "paying_customers" ? "view" : "table",
+                engine: t === "paying_customers" ? null : "InnoDB",
+                comment: null,
+                columns: [
+                  col("id", "bigint unsigned", { key: "PRI" }),
+                  col("kind", "varchar(20)"),
+                ],
+                indexes: [],
+                foreignKeys: [],
+              };
+            }
+            case "table_rows": {
+              const a = args as unknown as {
+                table: string;
+                offset: number;
+              };
+              const w = window as unknown as {
+                __rowCalls?: { table: string; offset: number }[];
+                __FAIL_ROWS__?: boolean;
+              };
+              (w.__rowCalls ??= []).push({ table: a.table, offset: a.offset });
+              if (w.__FAIL_ROWS__)
+                throw { kind: "sql", message: "SELECT command denied to user" };
+              if (a.table === "orders") {
+                return {
+                  columns: [
+                    { name: "id", typeName: "BIGINT" },
+                    { name: "customer_id", typeName: "BIGINT" },
+                    { name: "status", typeName: "ENUM" },
+                    { name: "total", typeName: "DECIMAL" },
+                    { name: "notes", typeName: "VARCHAR" },
+                  ],
+                  rows: [
+                    ["48213", "9021", "paid", "184.50", null],
+                    [
+                      "48212",
+                      "4417",
+                      "pending",
+                      "62.00",
+                      "Leave at front desk",
+                    ],
+                    ["48211", "7730", "paid", "310.25", ""],
+                  ],
+                  offset: 0,
+                  hasMore: false,
+                };
+              }
+              // `events` is long enough to page: 250 rows, 100 per page.
+              const total = a.table === "events" ? 250 : 0;
+              const shown = Math.max(0, Math.min(100, total - a.offset));
+              return {
+                columns: [
+                  { name: "id", typeName: "BIGINT" },
+                  { name: "kind", typeName: "VARCHAR" },
+                ],
+                rows: Array.from({ length: shown }, (_, i) => [
+                  String(a.offset + i + 1),
+                  (a.offset + i) % 2 ? "tock" : "tick",
+                ]),
+                offset: a.offset,
+                hasMore: a.offset + shown < total,
+              };
+            }
             case "save_profile": {
               const w = window as unknown as { __saved?: unknown[] };
               (w.__saved ??= []).push(args);
@@ -244,6 +415,6 @@ export async function stubBackend(page: Page, extraKeys: string[] = []) {
         },
       };
     },
-    [profiles, extraKeys] as const,
+    [profiles, extraKeys, options.mysql ? mysqlProfile : null] as const,
   );
 }

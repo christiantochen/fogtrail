@@ -20,6 +20,9 @@ pub enum AppError {
     Secret(String),
     #[error("Redis error: {0}")]
     Redis(#[from] redis::RedisError),
+    /// The SQL server refused or failed a statement. The message is the server's own.
+    #[error("{0}")]
+    Sql(String),
 }
 
 impl AppError {
@@ -32,6 +35,7 @@ impl AppError {
             AppError::Storage(_) => "storage",
             AppError::Secret(_) => "secret",
             AppError::Redis(_) => "redis",
+            AppError::Sql(_) => "sql",
         }
     }
 }

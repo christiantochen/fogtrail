@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { emptyDraft } from "./profile";
 import {
   applyUrl,
+  buildConnectionUrl,
   buildRedisUrl,
   looksLikeUrl,
+  parseMysqlUrl,
   parseRedisUrl,
   type ParsedUrl,
 } from "./redisUrl";
@@ -235,5 +237,106 @@ describe("buildRedisUrl", () => {
       database: 2,
       tls: true,
     });
+  });
+});
+
+describe("MySQL URLs", () => {
+  const ok = (input: string) => {
+    const r = parseMysqlUrl(input);
+    if (!r.ok) throw new Error(r.error);
+    return r.value;
+  };
+
+  it("reads user, password, host, port and database", () => {
+    expect(ok("mysql://fogtrail:p%40ss@db.internal:3307/shop")).toEqual({
+      host: "db.internal",
+      port: 3307,
+      username: "fogtrail",
+      password: "p@ss",
+      schema: "shop",
+      tls: false,
+    });
+  });
+  it("leaves out what the URL does not say", () => {
+    const v = ok("mysql://db.internal");
+    expect(v.port).toBeUndefined();
+    expect(v.schema).toBeUndefined();
+    expect(v.username).toBeUndefined();
+  });
+  it("turns TLS on from the usual query options", () => {
+    expect(ok("mysql://h/db?ssl-mode=REQUIRED").tls).toBe(true);
+    expect(ok("mysql://h/db?tls=true").tls).toBe(true);
+    expect(ok("mysql://h/db?ssl-mode=DISABLED").tls).toBe(false);
+    expect(ok("mysql://h/db").tls).toBe(false);
+  });
+  it("decodes a database name and ignores the query for it", () => {
+    expect(ok("mysql://h/my%20db?ssl-mode=required").schema).toBe("my db");
+  });
+  it("refuses another scheme with a MySQL message", () => {
+    const r = parseMysqlUrl("redis://h:6379");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("Use mysql://");
+    const bad = parseMysqlUrl("localhost:3306");
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.error).toContain("MySQL URL");
+  });
+  it("refuses a bad port", () => {
+    expect(parseMysqlUrl("mysql://h:99999/db").ok).toBe(false);
+  });
+  it("a Redis URL is not accepted as MySQL, nor the reverse", () => {
+    expect(parseRedisUrl("mysql://h/db").ok).toBe(false);
+  });
+
+  it("fills a fresh MySQL form, with 3306 when the URL has no port", () => {
+    const d = { ...emptyDraft("mysql"), name: "x" };
+    const r = applyUrl(d, "", ok("mysql://u:pw@db/shop"), true);
+    expect(r.draft.host).toBe("db");
+    expect(r.draft.port).toBe("3306");
+    expect(r.draft.schema).toBe("shop");
+    expect(r.password).toBe("pw");
+    expect(r.filled).toContain("schema");
+    expect(r.filled).not.toContain("database");
+  });
+  it("keeps the typed database when editing and the URL has none", () => {
+    const d = { ...emptyDraft("mysql"), schema: "keep" };
+    const r = applyUrl(d, "", ok("mysql://db"), false);
+    expect(r.draft.schema).toBe("keep");
+  });
+
+  it("builds a URL back, with the password only when asked", () => {
+    const d = {
+      ...emptyDraft("mysql"),
+      host: "db",
+      username: "u",
+      schema: "my db",
+      tls: true,
+    };
+    expect(buildConnectionUrl(d, "p@ss", false)).toBe(
+      "mysql://u@db:3306/my%20db?ssl-mode=required",
+    );
+    expect(buildConnectionUrl(d, "p@ss", true)).toBe(
+      "mysql://u:p%40ss@db:3306/my%20db?ssl-mode=required",
+    );
+  });
+  it("a built URL parses back to the same form", () => {
+    const d = {
+      ...emptyDraft("mysql"),
+      host: "db",
+      username: "u",
+      schema: "s",
+    };
+    const v = ok(buildConnectionUrl(d, "pw", true));
+    expect(v).toMatchObject({
+      host: "db",
+      username: "u",
+      password: "pw",
+      schema: "s",
+      port: 3306,
+    });
+  });
+  it("Redis forms still build redis URLs", () => {
+    expect(buildConnectionUrl(emptyDraft(), "", false)).toBe(
+      "redis://127.0.0.1:6379",
+    );
   });
 });

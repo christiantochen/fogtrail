@@ -5,7 +5,7 @@ export interface ConnectionInfo {
   address: string;
   database: number;
   /** Which screen to show: "keyValue" for Redis, Valkey and Dragonfly. */
-  store: "keyValue";
+  store: "keyValue" | "sql";
 }
 
 export interface KeyNode {
@@ -86,6 +86,7 @@ export interface AppError {
     | "storage"
     | "secret"
     | "redis"
+    | "sql"
     | "unknown";
   message: string;
 }
@@ -107,7 +108,8 @@ export interface Profile {
 export interface TestResult {
   product: string;
   version: string;
-  keyCount: number;
+  /** Null for stores that don't count keys (MySQL). */
+  keyCount: number | null;
 }
 
 export interface DatabaseInfo {
@@ -133,4 +135,64 @@ export interface ServerInfo {
   databases: DatabaseInfo[];
   /** How many databases the server has; null when it does not say. */
   databaseCount: number | null;
+}
+
+export interface SchemaInfo {
+  name: string;
+  /** Built-in schemas such as mysql and information_schema. */
+  system: boolean;
+}
+
+export interface TableInfo {
+  name: string;
+  kind: "table" | "view";
+  /** The server's own estimate, never an exact count. Null for views. */
+  estimatedRows: number | null;
+}
+
+export interface ColumnInfo {
+  name: string;
+  dataType: string;
+  nullable: boolean;
+  key: string | null;
+  default: string | null;
+  extra: string | null;
+  comment: string | null;
+}
+
+export interface IndexInfo {
+  name: string;
+  unique: boolean;
+  columns: string[];
+  indexType: string;
+}
+
+export interface ForeignKeyInfo {
+  name: string;
+  columns: string[];
+  refSchema: string;
+  refTable: string;
+  refColumns: string[];
+}
+
+export interface TableStructure {
+  kind: "table" | "view";
+  engine: string | null;
+  comment: string | null;
+  columns: ColumnInfo[];
+  indexes: IndexInfo[];
+  foreignKeys: ForeignKeyInfo[];
+}
+
+export interface ResultColumn {
+  name: string;
+  typeName: string;
+}
+
+/** A cell is null for SQL NULL, so NULL and an empty string stay different. */
+export interface RowPage {
+  columns: ResultColumn[];
+  rows: (string | null)[][];
+  offset: number;
+  hasMore: boolean;
 }

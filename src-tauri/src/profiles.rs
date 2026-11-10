@@ -48,8 +48,8 @@ impl Profile {
             return bad("Enter a port between 1 and 65535.");
         }
         match self.driver.as_str() {
-            "redis" => Ok(()),
-            _ => bad("Only Redis-compatible servers are supported for now."),
+            "redis" | "mysql" => Ok(()),
+            _ => bad("Only Redis-compatible servers and MySQL are supported for now."),
         }
     }
 
@@ -162,6 +162,15 @@ mod tests {
     fn store() -> (ProfileStore, PathBuf) {
         let dir = std::env::temp_dir().join(format!("fogtrail-test-{}", uuid::Uuid::new_v4()));
         (ProfileStore::new(dir.join("connections.json")), dir)
+    }
+
+    #[test]
+    fn mysql_is_accepted_and_other_stores_are_not() {
+        let mut p = sample();
+        p.driver = "mysql".into();
+        assert!(p.validate().is_ok());
+        p.driver = "oracle".into();
+        assert!(p.validate().is_err());
     }
 
     #[test]

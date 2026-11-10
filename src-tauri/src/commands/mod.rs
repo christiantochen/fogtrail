@@ -2,7 +2,10 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use crate::connections::{Connections, TestResult};
-use crate::drivers::{BrowseQuery, ConnectionInfo, Detail, Node, Page, ServerInfo, StreamPage};
+use crate::drivers::{
+    BrowseQuery, ConnectionInfo, Detail, Node, Page, RowPage, SchemaInfo, ServerInfo, StreamPage,
+    TableInfo, TableStructure,
+};
 use crate::error::AppError;
 use crate::profiles::Profile;
 
@@ -115,4 +118,40 @@ pub async fn select_database(
     database: u32,
 ) -> Result<ConnectionInfo, AppError> {
     conns.select_database(database).await
+}
+
+#[tauri::command]
+pub async fn list_schemas(conns: State<'_, Connections>) -> Result<Vec<SchemaInfo>, AppError> {
+    conns.sql()?.list_schemas().await
+}
+
+#[tauri::command]
+pub async fn list_tables(
+    conns: State<'_, Connections>,
+    schema: String,
+) -> Result<Vec<TableInfo>, AppError> {
+    conns.sql()?.list_tables(&schema).await
+}
+
+#[tauri::command]
+pub async fn table_structure(
+    conns: State<'_, Connections>,
+    schema: String,
+    table: String,
+) -> Result<TableStructure, AppError> {
+    conns.sql()?.table_structure(&schema, &table).await
+}
+
+#[tauri::command]
+pub async fn table_rows(
+    conns: State<'_, Connections>,
+    schema: String,
+    table: String,
+    offset: Option<u64>,
+    count: Option<u32>,
+) -> Result<RowPage, AppError> {
+    conns
+        .sql()?
+        .table_rows(&schema, &table, offset.unwrap_or(0), count.unwrap_or(100))
+        .await
 }
