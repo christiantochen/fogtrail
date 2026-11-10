@@ -101,7 +101,9 @@ impl Connections {
         let id = self.active_id().ok_or(AppError::NotConnected)?;
         let mut profile = self.store.get(&id)?;
         profile.database = database;
-        self.open(profile).await
+        self.open(profile)
+            .await
+            .map_err(|e| friendly_select_error(database, e))
     }
 
     pub async fn server_info(&self) -> Result<ServerInfo, AppError> {
@@ -168,10 +170,36 @@ impl Connections {
     }
 }
 
+/// "DB index is out of range" is Redis's way of saying the database doesn't exist.
+fn friendly_select_error(database: u32, err: AppError) -> AppError {
+    match err {
+        AppError::Connect(m) if m.contains("out of range") => {
+            AppError::Connect(format!("This server has no database {database}."))
+        }
+        other => other,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::secrets::MemoryStore;
+
+    #[test]
+    fn a_missing_database_gets_a_plain_message() {
+        let raw = AppError::Connect(
+            "Could not connect to h:1: Redis server refused to switch database - Server(ResponseError): DB index is out of range".into(),
+        );
+        assert_eq!(
+            friendly_select_error(3, raw).to_string(),
+            "This server has no database 3."
+        );
+        let other = AppError::Connect("Connection refused".into());
+        assert_eq!(
+            friendly_select_error(3, other).to_string(),
+            "Connection refused"
+        );
+    }
 
     fn conns() -> Connections {
         let dir = std::env::temp_dir().join(format!("fogtrail-test-{}", uuid::Uuid::new_v4()));

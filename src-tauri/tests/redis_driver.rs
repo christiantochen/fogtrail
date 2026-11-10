@@ -286,6 +286,8 @@ async fn server_info_reports_health_and_keyspace() {
     let db15 = info.databases.iter().find(|d| d.index == 15).unwrap();
     assert_eq!(db15.keys, 8);
     assert_eq!(db15.expires, 1);
+    // The seed uses db15, so the server has at least 16.
+    assert!(info.database_count.unwrap() >= 16);
 }
 
 #[tokio::test]

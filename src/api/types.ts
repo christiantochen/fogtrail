@@ -127,4 +127,6 @@ export interface ServerInfo {
   hits: number | null;
   misses: number | null;
   databases: DatabaseInfo[];
+  /** How many databases the server has; null when it does not say. */
+  databaseCount: number | null;
 }

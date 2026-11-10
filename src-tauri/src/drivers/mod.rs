@@ -166,6 +166,9 @@ pub struct ServerInfo {
     pub misses: Option<u64>,
     /// Databases that hold keys.
     pub databases: Vec<DatabaseInfo>,
+    /// How many databases the server has, or `None` when it won't say
+    /// (managed services often block CONFIG).
+    pub database_count: Option<u32>,
 }
 
 /// What a server says about itself when first contacted.

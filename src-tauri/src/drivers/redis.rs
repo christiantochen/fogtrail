@@ -1,6 +1,7 @@
 //! Redis driver. Also speaks to Valkey, Dragonfly, KeyDB and friends, since they
 //! share the protocol. Everything here is read-only: the only commands sent are
-//! SCAN-family, TYPE, TTL, OBJECT, MEMORY USAGE and the plain readers.
+//! SCAN-family, TYPE, TTL, OBJECT, MEMORY USAGE, CONFIG GET databases and the
+//! plain readers.
 
 use async_trait::async_trait;
 use std::time::Duration;
@@ -143,6 +144,16 @@ pub fn parse_keyspace(fields: &std::collections::HashMap<String, String>) -> Vec
     dbs
 }
 
+/// The reply to `CONFIG GET databases` is `["databases", "16"]`.
+pub fn parse_database_count(reply: &[String]) -> Option<u32> {
+    match reply {
+        [name, value, ..] if name.eq_ignore_ascii_case("databases") => {
+            value.trim().parse().ok().filter(|n| *n > 0)
+        }
+        _ => None,
+    }
+}
+
 #[async_trait]
 impl Driver for RedisDriver {
     async fn server_info(&self) -> Result<ServerInfo, AppError> {
@@ -156,6 +167,13 @@ impl Driver for RedisDriver {
                 .filter(|v| !v.is_empty())
         };
         let (product, version) = detect(&raw);
+        // Read-only, but managed services often refuse CONFIG, so a refusal just means "unknown".
+        let config: Result<Vec<String>, _> = redis::cmd("CONFIG")
+            .arg("GET")
+            .arg("databases")
+            .query_async(&mut conn)
+            .await;
+        let database_count = config.ok().and_then(|r| parse_database_count(&r));
         Ok(ServerInfo {
             product,
             version,
@@ -170,6 +188,7 @@ impl Driver for RedisDriver {
             hits: num("keyspace_hits"),
             misses: num("keyspace_misses"),
             databases: parse_keyspace(&f),
+            database_count,
         })
     }
 
@@ -571,7 +590,7 @@ async fn read_stream(conn: &mut ConnectionManager, name: &str, key: &[u8]) -> Re
 
 #[cfg(test)]
 mod tests {
-    use super::{decrement_id, detect, parse_info, parse_keyspace};
+    use super::{decrement_id, detect, parse_database_count, parse_info, parse_keyspace};
     use crate::drivers::DatabaseInfo;
 
     #[test]
@@ -596,6 +615,17 @@ mod tests {
         );
         // Not a database line, so ignored.
         assert!(parse_keyspace(&parse_info("dbsize:3\r\n")).is_empty());
+    }
+
+    #[test]
+    fn reads_the_database_count() {
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert_eq!(parse_database_count(&s(&["databases", "16"])), Some(16));
+        assert_eq!(parse_database_count(&s(&["databases", "1"])), Some(1));
+        assert_eq!(parse_database_count(&s(&["databases", "0"])), None);
+        assert_eq!(parse_database_count(&s(&["databases", "x"])), None);
+        assert_eq!(parse_database_count(&s(&["maxmemory", "0"])), None);
+        assert_eq!(parse_database_count(&[]), None);
     }
 
     #[test]
