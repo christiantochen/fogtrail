@@ -6,6 +6,7 @@ import type {
   KeyNode,
   Page,
   Profile,
+  QueryResult,
   RowPage,
   SchemaInfo,
   ServerInfo,
@@ -73,3 +74,10 @@ export const tableRows = (
   offset: number,
   count?: number,
 ) => call<RowPage>("table_rows", { schema, table, offset, count });
+
+/** Runs one read-only statement. `runId` lets `cancelQuery` stop it. */
+export const runQuery = (sql: string, schema: string | null, runId: string) =>
+  call<QueryResult>("run_query", { sql, schema, runId });
+
+export const cancelQuery = (runId: string) =>
+  call<void>("cancel_query", { runId });

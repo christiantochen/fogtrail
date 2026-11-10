@@ -74,3 +74,32 @@ export function columnSub(
   if (info?.nullable) parts.push("null");
   return parts.join(" · ");
 }
+
+/** Results as tab-separated text, ready to paste into a spreadsheet. NULL is left empty. */
+export function resultToTsv(
+  columns: ResultColumn[],
+  rows: (string | null)[][],
+): string {
+  // Tabs and line breaks inside a value would break the shape of the table.
+  const clean = (v: string | null) =>
+    v === null ? "" : v.replace(/[\t\r\n]+/g, " ");
+  return [columns.map((c) => clean(c.name)), ...rows.map((r) => r.map(clean))]
+    .map((r) => r.join("\t"))
+    .join("\n");
+}
+
+/** "5 rows", "1 row" or "No rows". */
+export function rowCountLabel(n: number): string {
+  if (n === 0) return "No rows";
+  return `${n.toLocaleString("en-US")} ${n === 1 ? "row" : "rows"}`;
+}
+
+/** "12 ms", or seconds from a second up. */
+export function elapsedLabel(ms: number): string {
+  return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
+}
+
+/** How many numbered lines the editor shows for this text. Always at least one. */
+export function lineCount(text: string): number {
+  return text.split("\n").length;
+}

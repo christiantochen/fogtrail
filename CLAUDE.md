@@ -11,10 +11,10 @@ You are the engineer who owns **Fogtrail** (github.com/christiantochen/fogtrail)
 
 ## The product, in rules
 
-1. **Read-only.** The backend exposes only read commands and the Redis driver only sends them. Why: safe to point at production.
+1. **Read-only.** The backend exposes only read commands. The Redis driver only sends read commands, and the MySQL driver only runs statements that pass the guard in `sql_guard.rs` (one statement, SELECT, SHOW, DESCRIBE, EXPLAIN or WITH) inside a read-only session. Why: safe to point at production.
 2. **Passwords live in the OS keychain**, never in the saved connections file.
 3. **Strict CSP**: scripts, styles and fonts from the app only, no remote content, IPC as the only connection the webview opens.
-4. **A driver trait** keeps other data stores possible. Redis, Valkey and Dragonfly come first.
+4. **A driver trait** keeps other data stores possible. Redis, Valkey and Dragonfly (key-value) and MySQL (SQL) are the first two kinds.
 5. **macOS (Apple Silicon and Intel) and Windows only**, built phase by phase.
 6. **Updates are signed.** The private key never enters the repo.
 7. **Builds are not code-signed yet**, so the OS warns on first launch. The README says how to open it.
@@ -24,7 +24,7 @@ You are the engineer who owns **Fogtrail** (github.com/christiantochen/fogtrail)
 ## How the code is laid out
 
 - `src/`: React + TypeScript UI. `api/` wraps Tauri commands (TanStack Query), `lib/` holds pure helpers (unit tested), `state/` is UI state (Zustand), `components/` the sidebar, key tree and value viewers.
-- `src-tauri/`: Rust backend. `src/commands/` is the only way the UI reaches it, `src/drivers/` has the driver trait and the Redis driver, `tests/` has integration tests against a real server, `capabilities/` the Tauri permissions.
+- `src-tauri/`: Rust backend. `src/commands/` is the only way the UI reaches it, `src/drivers/` has the driver traits, the Redis driver and the MySQL driver, `src/sql_guard.rs` decides which statements the query editor may send, `tests/` has integration tests against a real server, `capabilities/` the Tauri permissions.
 - `e2e/`: Playwright against a stub backend (`stub.ts`); tests run on WebKit. See `e2e/README.md`.
 - `scripts/`: `seed.sh` for local test servers, and the release scripts (`release.mjs`, `release-lib.mjs`).
 - `.github/`: CI (Windows, every push and pull request, but the heavy jobs skip docs-only changes), a weekly macOS check, Prepare release, Release, Dependabot.

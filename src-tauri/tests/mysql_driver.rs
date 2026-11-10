@@ -325,7 +325,7 @@ async fn a_saved_mysql_profile_connects_and_browses() {
 // --- the query editor ---------------------------------------------------------
 
 async fn run(d: &MySqlDriver, sql: &str) -> Result<fogtrail_lib::drivers::QueryResult, AppError> {
-    d.run_query(sql, "test").await
+    d.run_query(sql, None, "test").await
 }
 
 #[tokio::test]
@@ -451,7 +451,7 @@ async fn a_slow_query_is_stopped_at_the_time_limit() {
     // 250^4 row combinations: far more work than two seconds allow.
     match run(
         &d,
-        "SELECT COUNT(*) FROM events a, events b, events c, events d",
+        "SELECT SUM(a.id * b.id + c.id * d.id) FROM events a, events b, events c, events d",
     )
     .await
     {
@@ -471,7 +471,7 @@ async fn a_running_query_can_be_cancelled() {
     ));
     let running = {
         let d = Arc::clone(&d);
-        tokio::spawn(async move { d.run_query("SELECT SLEEP(20)", "slow").await })
+        tokio::spawn(async move { d.run_query("SELECT SLEEP(20)", None, "slow").await })
     };
     tokio::time::sleep(Duration::from_millis(800)).await;
     let started = Instant::now();
@@ -490,4 +490,29 @@ async fn a_running_query_can_be_cancelled() {
 async fn cancelling_something_that_is_not_running_does_nothing() {
     let d = driver_or_skip!();
     d.cancel_query("never-ran").await.unwrap();
+}
+
+#[tokio::test]
+async fn unqualified_names_use_the_schema_that_was_asked_for() {
+    let d = driver_or_skip!();
+    let r = d
+        .run_query("SELECT COUNT(*) FROM customers", Some("shop"), "t")
+        .await
+        .unwrap();
+    assert_eq!(r.rows.len(), 1);
+    // Another schema, and a name that needs quoting.
+    let other = d
+        .run_query("SELECT DATABASE()", Some("information_schema"), "t")
+        .await
+        .unwrap();
+    assert_eq!(
+        other.rows,
+        vec![vec![Some("information_schema".to_string())]]
+    );
+    match d.run_query("SELECT 1", Some("no`such"), "t").await {
+        Err(AppError::Sql(_)) | Err(AppError::Connect(_)) => {}
+        other => panic!("an unknown schema should fail cleanly, got {other:?}"),
+    }
+    // The next run on the same pool is unaffected.
+    assert!(d.run_query("SELECT 1", Some("shop"), "t").await.is_ok());
 }

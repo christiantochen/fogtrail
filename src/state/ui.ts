@@ -50,6 +50,12 @@ interface UiState {
   sqlTab: "data" | "structure";
   /** Rows skipped before the page on screen. */
   sqlOffset: number;
+  /** The query editor is open in place of a table. */
+  sqlQueryOpen: boolean;
+  /** What is typed in the editor. Kept while you look at tables and come back. */
+  sqlText: string;
+  openQueryEditor: () => void;
+  setSqlText: (text: string) => void;
   selectSchema: (schema: string | null) => void;
   selectTable: (table: string | null) => void;
   setSqlTab: (tab: "data" | "structure") => void;
@@ -164,9 +170,16 @@ export const useUi = create<UiState>((set) => ({
   sqlTable: null,
   sqlTab: "data",
   sqlOffset: 0,
+  sqlQueryOpen: false,
+  sqlText: "",
+  openQueryEditor: () => set({ sqlQueryOpen: true }),
+  setSqlText: (sqlText) => set({ sqlText }),
+  // Changing database keeps the editor open, so a query can be tried on another one.
   selectSchema: (sqlSchema) =>
     set({ sqlSchema, sqlTable: null, sqlTab: "data", sqlOffset: 0 }),
-  selectTable: (sqlTable) => set({ sqlTable, sqlTab: "data", sqlOffset: 0 }),
+  // Picking a table, or going back up to the database, leaves the editor.
+  selectTable: (sqlTable) =>
+    set({ sqlTable, sqlTab: "data", sqlOffset: 0, sqlQueryOpen: false }),
   setSqlTab: (sqlTab) => set({ sqlTab }),
   setSqlOffset: (sqlOffset) => set({ sqlOffset: Math.max(0, sqlOffset) }),
   kindFilter: null,
@@ -192,6 +205,8 @@ export const useUi = create<UiState>((set) => ({
         sqlTable: null,
         sqlTab: "data",
         sqlOffset: 0,
+        sqlQueryOpen: false,
+        sqlText: "",
         kindFilter: null,
         sort: "name",
         expanded: new Set(),

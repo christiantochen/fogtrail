@@ -401,11 +401,25 @@ impl SqlDriver for MySqlDriver {
         })
     }
 
-    async fn run_query(&self, sql: &str, run_id: &str) -> Result<QueryResult, AppError> {
+    async fn run_query(
+        &self,
+        sql: &str,
+        schema: Option<&str>,
+        run_id: &str,
+    ) -> Result<QueryResult, AppError> {
         // Nothing reaches the server until the guard has said yes.
         sql_guard::check(sql)?;
         let pool = self.pool().await?;
         let mut conn = pool.acquire().await.map_err(|e| self.err(e))?;
+        // Unqualified table names mean the schema open in the UI. A pooled connection
+        // may have been left on another one, so say it every time. The name is quoted,
+        // and the server refuses one that doesn't exist.
+        if let Some(schema) = schema.map(str::trim).filter(|s| !s.is_empty()) {
+            let use_schema = format!("USE {}", quote_ident(schema));
+            conn.execute(use_schema.as_str())
+                .await
+                .map_err(|e| self.err(e))?;
+        }
         let connection_id: u64 = sqlx::query("SELECT CONNECTION_ID()")
             .fetch_one(&mut *conn)
             .await

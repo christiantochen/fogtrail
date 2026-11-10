@@ -160,9 +160,13 @@ pub async fn table_rows(
 pub async fn run_query(
     conns: State<'_, Connections>,
     sql: String,
+    schema: Option<String>,
     run_id: String,
 ) -> Result<QueryResult, AppError> {
-    conns.sql()?.run_query(&sql, &run_id).await
+    conns
+        .sql()?
+        .run_query(&sql, schema.as_deref(), &run_id)
+        .await
 }
 
 #[tauri::command]

@@ -87,6 +87,7 @@ export interface AppError {
     | "secret"
     | "redis"
     | "sql"
+    | "blocked"
     | "unknown";
   message: string;
 }
@@ -195,4 +196,14 @@ export interface RowPage {
   rows: (string | null)[][];
   offset: number;
   hasMore: boolean;
+}
+
+/** What a query from the editor returned. */
+export interface QueryResult {
+  columns: ResultColumn[];
+  rows: (string | null)[][];
+  /** The query had more rows than the limit; the rest were not read. */
+  truncated: boolean;
+  rowLimit: number;
+  elapsedMs: number;
 }

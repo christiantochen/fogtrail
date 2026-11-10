@@ -11,7 +11,14 @@ import {
 } from "../lib/sql";
 import { useUi } from "../state/ui";
 import { ConnectionSwitch } from "./ConnectionSwitch";
-import { DatabaseIcon, Lock, Mark, Refresh, TableIcon } from "./Icons";
+import {
+  DatabaseIcon,
+  Lock,
+  Mark,
+  QueryIcon,
+  Refresh,
+  TableIcon,
+} from "./Icons";
 
 /** The sidebar for a SQL connection: databases, then the tables of the open one. */
 export function SqlSidebar() {
@@ -22,6 +29,8 @@ export function SqlSidebar() {
   const table = useUi((s) => s.sqlTable);
   const selectSchema = useUi((s) => s.selectSchema);
   const selectTable = useUi((s) => s.selectTable);
+  const queryOpen = useUi((s) => s.sqlQueryOpen);
+  const openQueryEditor = useUi((s) => s.openQueryEditor);
   const profiles = useProfiles();
   const schemas = useSchemas();
   const tables = useTables(schema);
@@ -189,6 +198,17 @@ export function SqlSidebar() {
         </button>
       </div>
 
+      <button
+        type="button"
+        className="queryopen"
+        aria-current={queryOpen}
+        disabled={schema === null}
+        onClick={openQueryEditor}
+      >
+        <QueryIcon />
+        <span>Query editor</span>
+      </button>
+
       <div className="section-label">
         Tables{tables.isSuccess ? ` · ${list.length}` : ""}
       </div>
@@ -224,7 +244,7 @@ export function SqlSidebar() {
               <button
                 type="button"
                 className="row"
-                aria-current={t.name === table}
+                aria-current={!queryOpen && t.name === table}
                 title={t.name}
                 onClick={() => selectTable(t.name)}
               >

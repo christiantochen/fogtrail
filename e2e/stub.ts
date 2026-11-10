@@ -401,6 +401,116 @@ export async function stubBackend(
                 hasMore: a.offset + shown < total,
               };
             }
+            case "run_query": {
+              const a = args as unknown as {
+                sql: string;
+                schema: string | null;
+                runId: string;
+              };
+              const w = window as unknown as {
+                __queryCalls?: { sql: string; schema: string | null }[];
+                __stopSlow?: Record<string, () => void>;
+              };
+              (w.__queryCalls ??= []).push({ sql: a.sql, schema: a.schema });
+              // The same rule as the backend guard, cut down: one statement, and only
+              // reads. The real thing is tested in Rust.
+              const bare = a.sql
+                .replace(/\/\*[\s\S]*?\*\//g, " ")
+                .replace(/(--|#)[^\n]*/g, " ")
+                .trim()
+                .replace(/;+\s*$/, "");
+              const word = (
+                bare.match(/^\(?\s*(\w+)/)?.[1] ?? ""
+              ).toUpperCase();
+              const allowed = [
+                "SELECT",
+                "SHOW",
+                "DESCRIBE",
+                "DESC",
+                "EXPLAIN",
+                "WITH",
+              ];
+              const allowedText =
+                "Fogtrail runs SELECT, SHOW, DESCRIBE, EXPLAIN and WITH only. Nothing was sent to the server.";
+              if (bare === "")
+                throw {
+                  kind: "blocked",
+                  message: "There is nothing to run. Type a statement first.",
+                };
+              if (
+                a.sql
+                  .trim()
+                  .replace(/;+\s*$/, "")
+                  .includes(";")
+              )
+                throw {
+                  kind: "blocked",
+                  message: `Running more than one statement at once is not allowed. ${allowedText}`,
+                };
+              if (!allowed.includes(word))
+                throw {
+                  kind: "blocked",
+                  message: `${word} is not allowed. ${allowedText}`,
+                };
+              if (/slow/i.test(a.sql)) {
+                // Waits until the test cancels it.
+                await new Promise<void>((resolve) => {
+                  (w.__stopSlow ??= {})[a.runId] = resolve;
+                });
+                throw { kind: "sql", message: "Stopped." };
+              }
+              if (/broken/i.test(a.sql))
+                throw {
+                  kind: "sql",
+                  message:
+                    "You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'broken' at line 1",
+                };
+              if (/huge/i.test(a.sql))
+                return {
+                  columns: [{ name: "n", typeName: "BIGINT" }],
+                  rows: Array.from({ length: 1000 }, (_, i) => [String(i + 1)]),
+                  truncated: true,
+                  rowLimit: 1000,
+                  elapsedMs: 1840,
+                };
+              if (/nothing/i.test(a.sql))
+                return {
+                  columns: [
+                    { name: "id", typeName: "BIGINT" },
+                    { name: "kind", typeName: "VARCHAR" },
+                  ],
+                  rows: [],
+                  truncated: false,
+                  rowLimit: 1000,
+                  elapsedMs: 3,
+                };
+              return {
+                columns: [
+                  { name: "id", typeName: "BIGINT" },
+                  { name: "status", typeName: "ENUM" },
+                  { name: "total", typeName: "DECIMAL" },
+                  { name: "notes", typeName: "VARCHAR" },
+                ],
+                rows: [
+                  ["48213", "paid", "184.50", null],
+                  ["48212", "pending", "62.00", "Leave at front desk"],
+                  ["48211", "paid", "310.25", ""],
+                ],
+                truncated: false,
+                rowLimit: 1000,
+                elapsedMs: 12,
+              };
+            }
+            case "cancel_query": {
+              const w = window as unknown as {
+                __stopSlow?: Record<string, () => void>;
+                __cancelled?: string[];
+              };
+              const id = (args as unknown as { runId: string }).runId;
+              (w.__cancelled ??= []).push(id);
+              w.__stopSlow?.[id]?.();
+              return null;
+            }
             case "save_profile": {
               const w = window as unknown as { __saved?: unknown[] };
               (w.__saved ??= []).push(args);

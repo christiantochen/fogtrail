@@ -1,12 +1,14 @@
 import { useProfiles } from "../api/queries";
 import { useUi } from "../state/ui";
 import { Chevron } from "./Icons";
+import { QueryEditor } from "./QueryEditor";
 import { TableView } from "./TableView";
 
 /** The main area for a SQL connection: the trail, then the open table. */
 export function SqlMain() {
   const schema = useUi((s) => s.sqlSchema);
   const table = useUi((s) => s.sqlTable);
+  const queryOpen = useUi((s) => s.sqlQueryOpen);
   const selectTable = useUi((s) => s.selectTable);
   const openConnections = useUi((s) => s.openConnections);
   const connectedId = useUi((s) => s.connectedId);
@@ -28,7 +30,7 @@ export function SqlMain() {
           {schema && (
             <>
               {name && <Chevron />}
-              {table ? (
+              {table || queryOpen ? (
                 <button
                   type="button"
                   className="crumb"
@@ -43,7 +45,15 @@ export function SqlMain() {
               )}
             </>
           )}
-          {schema && table && (
+          {schema && queryOpen && (
+            <>
+              <Chevron />
+              <span className="crumb crumb--here" aria-current="page">
+                Query editor
+              </span>
+            </>
+          )}
+          {schema && !queryOpen && table && (
             <>
               <Chevron />
               <span className="crumb crumb--here mono" aria-current="page">
@@ -53,7 +63,9 @@ export function SqlMain() {
           )}
         </nav>
       </header>
-      {schema && table ? (
+      {queryOpen ? (
+        <QueryEditor schema={schema} />
+      ) : schema && table ? (
         <TableView key={`${schema}.${table}`} schema={schema} table={table} />
       ) : (
         <div className="state">
