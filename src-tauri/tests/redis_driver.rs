@@ -105,6 +105,34 @@ async fn browse_lists_keys_with_type_and_ttl() {
 }
 
 #[tokio::test]
+async fn browse_can_filter_by_type() {
+    let Some((_guard, d)) = seeded().await else {
+        return;
+    };
+    let page = d
+        .browse(BrowseQuery {
+            count: 1000,
+            kind: Some("hash".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(!page.items.is_empty());
+    assert!(page.items.iter().all(|n| n.kind == "hash"));
+    assert!(page.items.iter().any(|n| n.name == "user:1"));
+
+    let err = d
+        .browse(BrowseQuery {
+            count: 10,
+            kind: Some("hash COUNT 1".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(err, AppError::InvalidArgument(_)));
+}
+
+#[tokio::test]
 async fn browse_filters_by_pattern_and_pages_with_cursor() {
     let Some((_guard, d)) = seeded().await else {
         return;
@@ -114,6 +142,7 @@ async fn browse_filters_by_pattern_and_pages_with_cursor() {
             pattern: Some("user:*".into()),
             count: 1000,
             cursor: None,
+            kind: None,
         })
         .await
         .unwrap();
@@ -128,6 +157,7 @@ async fn browse_filters_by_pattern_and_pages_with_cursor() {
                 count: 10,
                 cursor: cursor.clone(),
                 pattern: None,
+                kind: None,
             })
             .await
             .unwrap();
@@ -150,6 +180,7 @@ async fn browse_rejects_bad_cursor() {
             cursor: Some("nope".into()),
             count: 10,
             pattern: None,
+            kind: None,
         })
         .await
         .unwrap_err();

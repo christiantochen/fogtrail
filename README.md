@@ -10,7 +10,7 @@ Downloads: https://tools.christiantochen.com/fogtrail
 
 Redis (and Redis-compatible servers such as Valkey and Dragonfly) comes first. The backend is built around a driver trait so other data sources can be added later.
 
-Save connection profiles (host, port, ACL user, database, TLS) with passwords in your system keychain, then browse every common key type read-only: strings (with JSON colors), hashes, lists, sets, sorted sets and streams (with consumer groups). Search runs on the server, the folder delimiter is configurable, you can switch databases, and a Server info panel shows version, memory, clients and keys per database. Valkey and Dragonfly are detected on connect.
+Save connection profiles (host, port, ACL user, database, TLS) with passwords in your system keychain, then browse every common key type read-only: strings (with JSON colors), hashes, lists, sets, sorted sets and streams (with consumer groups). Search and a key-type filter run on the server, keys can be listed by soonest expiry, the folder delimiter is configurable, you can switch databases, and a Server info panel shows version, memory (with a usage bar when a limit is set), clients and keys per database. Valkey and Dragonfly are detected on connect.
 
 ## Install
 

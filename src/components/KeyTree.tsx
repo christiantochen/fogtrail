@@ -10,7 +10,7 @@ import type { KeyNode } from "../api/types";
 import { copyText, readCommand } from "../lib/clipboard";
 import { ttlLabel, typeBadge } from "../lib/format";
 import { useNow } from "../lib/useNow";
-import { buildTree, type TreeNode } from "../lib/tree";
+import { buildTree, flatNodes, type TreeNode } from "../lib/tree";
 import { useUi } from "../state/ui";
 import { getKey } from "../api/browse";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
@@ -26,12 +26,18 @@ const shortcutHint = /Mac|iPhone|iPad/.test(navigator.platform)
 export function KeyTree({
   keys,
   searching,
+  flat = false,
 }: {
   keys: KeyNode[];
   searching: boolean;
+  /** Show the keys as given, one row each, instead of grouping them into folders. */
+  flat?: boolean;
 }) {
   const delimiter = useUi((s) => s.delimiter);
-  const tree = useMemo(() => buildTree(keys, delimiter), [keys, delimiter]);
+  const tree = useMemo(
+    () => (flat ? flatNodes(keys) : buildTree(keys, delimiter)),
+    [keys, delimiter, flat],
+  );
 
   const [tip, setTip] = useState<Tip | null>(null);
   const timer = useRef<number>(undefined);

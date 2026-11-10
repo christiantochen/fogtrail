@@ -9,18 +9,23 @@ export const useProfiles = () =>
   useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
 
 /** Keys, one SCAN page at a time. `fetchNextPage` follows the server cursor. */
-export function useKeys(pattern?: string) {
+export function useKeys(pattern?: string, kind?: string | null) {
   return useInfiniteQuery<
     Awaited<ReturnType<typeof scanKeys>>,
     AppError,
     { items: Awaited<ReturnType<typeof scanKeys>>["items"]; hasMore: boolean },
-    (string | undefined)[],
+    (string | null | undefined)[],
     string | null
   >({
-    queryKey: ["keys", pattern],
+    queryKey: ["keys", pattern, kind ?? null],
     initialPageParam: null,
     queryFn: async ({ pageParam }) => {
-      const page = await scanKeys({ pattern, cursor: pageParam, count: PAGE });
+      const page = await scanKeys({
+        pattern,
+        cursor: pageParam,
+        count: PAGE,
+        kind,
+      });
       // Stamp each key with its scan time, so a TTL counts down from when it was read.
       const scannedAt = Date.now();
       return {

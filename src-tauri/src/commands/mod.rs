@@ -73,6 +73,7 @@ pub async fn scan_keys(
     pattern: Option<String>,
     cursor: Option<String>,
     count: Option<u32>,
+    kind: Option<String>,
 ) -> Result<Page<Node>, AppError> {
     conns
         .driver()?
@@ -80,6 +81,7 @@ pub async fn scan_keys(
             pattern,
             cursor,
             count: count.unwrap_or(200),
+            kind,
         })
         .await
 }
