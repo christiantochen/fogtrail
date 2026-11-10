@@ -38,7 +38,7 @@ const known: Known = {
 /** Suggestions with the caret at `|`. */
 function at(sql: string, manual = false) {
   const caret = sql.indexOf("|");
-  const text = sql.replace("|", "");
+  const text = sql.replace(/\|/g, "");
   return suggest(contextAt(text, caret), known, manual);
 }
 const labels = (sql: string, manual = false) =>
