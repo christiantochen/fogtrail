@@ -2,7 +2,10 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use crate::connections::{Connections, TestResult};
-use crate::drivers::{BrowseQuery, ConnectionInfo, Detail, Node, Page, ServerInfo, StreamPage};
+use crate::drivers::{
+    BrowseQuery, ConnectionInfo, Detail, Node, Page, QueryResult, RowPage, SchemaInfo, ServerInfo,
+    StreamPage, TableInfo, TableStructure,
+};
 use crate::error::AppError;
 use crate::profiles::Profile;
 
@@ -76,7 +79,7 @@ pub async fn scan_keys(
     kind: Option<String>,
 ) -> Result<Page<Node>, AppError> {
     conns
-        .driver()?
+        .key_value()?
         .browse(BrowseQuery {
             pattern,
             cursor,
@@ -88,7 +91,7 @@ pub async fn scan_keys(
 
 #[tauri::command]
 pub async fn get_key(conns: State<'_, Connections>, name: String) -> Result<Detail, AppError> {
-    conns.driver()?.read(&name).await
+    conns.key_value()?.read(&name).await
 }
 
 #[tauri::command]
@@ -99,7 +102,7 @@ pub async fn stream_page(
     count: Option<u32>,
 ) -> Result<StreamPage, AppError> {
     conns
-        .driver()?
+        .key_value()?
         .stream_page(&name, &before, count.unwrap_or(100))
         .await
 }
@@ -115,4 +118,58 @@ pub async fn select_database(
     database: u32,
 ) -> Result<ConnectionInfo, AppError> {
     conns.select_database(database).await
+}
+
+#[tauri::command]
+pub async fn list_schemas(conns: State<'_, Connections>) -> Result<Vec<SchemaInfo>, AppError> {
+    conns.sql()?.list_schemas().await
+}
+
+#[tauri::command]
+pub async fn list_tables(
+    conns: State<'_, Connections>,
+    schema: String,
+) -> Result<Vec<TableInfo>, AppError> {
+    conns.sql()?.list_tables(&schema).await
+}
+
+#[tauri::command]
+pub async fn table_structure(
+    conns: State<'_, Connections>,
+    schema: String,
+    table: String,
+) -> Result<TableStructure, AppError> {
+    conns.sql()?.table_structure(&schema, &table).await
+}
+
+#[tauri::command]
+pub async fn table_rows(
+    conns: State<'_, Connections>,
+    schema: String,
+    table: String,
+    offset: Option<u64>,
+    count: Option<u32>,
+) -> Result<RowPage, AppError> {
+    conns
+        .sql()?
+        .table_rows(&schema, &table, offset.unwrap_or(0), count.unwrap_or(100))
+        .await
+}
+
+#[tauri::command]
+pub async fn run_query(
+    conns: State<'_, Connections>,
+    sql: String,
+    schema: Option<String>,
+    run_id: String,
+) -> Result<QueryResult, AppError> {
+    conns
+        .sql()?
+        .run_query(&sql, schema.as_deref(), &run_id)
+        .await
+}
+
+#[tauri::command]
+pub async fn cancel_query(conns: State<'_, Connections>, run_id: String) -> Result<(), AppError> {
+    conns.sql()?.cancel_query(&run_id).await
 }

@@ -8,9 +8,11 @@ Downloads: https://tools.christiantochen.com/fogtrail
 
 ## What it does
 
-Redis (and Redis-compatible servers such as Valkey and Dragonfly) comes first. The backend is built around a driver trait so other data sources can be added later.
+Redis (and Redis-compatible servers such as Valkey and Dragonfly) comes first, and MySQL is being added next. The backend is built around a driver trait so other data sources can be added later.
 
 Save connection profiles (host, port, ACL user, database, TLS) with passwords in your system keychain, then browse every common key type read-only: strings (with JSON colors), hashes, lists, sets, sorted sets and streams (with consumer groups). Search and a key-type filter run on the server, keys can be listed by soonest expiry, the folder delimiter is configurable, you can switch databases, and a Server info panel shows version, memory (with a usage bar when a limit is set), clients and keys per database. Valkey and Dragonfly are detected on connect.
+
+MySQL connections (tested with MySQL 8) browse the same way, read-only: pick a database, filter its tables (row counts are the server's estimates, shown with `~`), and read a table's rows 100 at a time or its structure (columns, indexes, foreign keys). NULL is shown apart from an empty string. A query editor runs one statement at a time and only reads: `SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN` and `WITH`. Anything else is refused before it is sent. Results stop at 1,000 rows, a statement is stopped after 30 seconds, and a running query can be cancelled. The editor colours keywords, strings, numbers and comments, and suggests table names, column names (for the tables in the statement, fetched only when needed), other databases after `name.`, and SQL keywords as you type. Tab takes the first suggestion, the arrow keys then Enter pick another, Esc closes the list and Ctrl+Space opens it by hand. It is built into the app, with no extra editor library.
 
 ## Install
 
@@ -38,12 +40,16 @@ npm install
 npm run tauri dev
 ```
 
-Local Redis, Valkey and Dragonfly servers for testing (ports 6379, 6380 and 6381, localhost only):
+Local Redis, Valkey, Dragonfly and MySQL servers for testing (ports 6379, 6380, 6381 and 3306, localhost only):
 
 ```sh
 docker compose up -d
 scripts/seed.sh            # or: scripts/seed.sh valkey | dragonfly
+# MySQL (give it a few seconds to start first):
+docker compose exec -T mysql mysql -uroot -proot < scripts/seed-mysql.sql
 ```
+
+The MySQL seed creates a `shop` database and a read-only user, `fogtrail_ro` (password `ro-test-pw`). Throwaway passwords for a throwaway server.
 
 | Command                | What it does                           |
 | ---------------------- | -------------------------------------- |
@@ -63,13 +69,23 @@ Backend integration tests need a real server and skip without one. They flush th
 FOGTRAIL_TEST_REDIS_URL=redis://127.0.0.1:6379/15 cargo test
 ```
 
+The MySQL tests run against the seeded `shop` database. A second variable, for a user that _can_ write, lets one test prove the server still refuses writes from Fogtrail's session:
+
+```sh
+FOGTRAIL_TEST_MYSQL_URL=mysql://fogtrail_ro:ro-test-pw@127.0.0.1:3306/shop \
+FOGTRAIL_TEST_MYSQL_RW_URL=mysql://fogtrail_rw:rw-test-pw@127.0.0.1:3306/shop \
+cargo test
+```
+
 ## Configuration
 
-| Name                                 | Kind     | Where it's set               | What it's for                                             |
-| ------------------------------------ | -------- | ---------------------------- | --------------------------------------------------------- |
-| `TAURI_SIGNING_PRIVATE_KEY`          | secret   | GitHub repo secret           | Signs the auto-update files                               |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | secret   | GitHub repo secret           | Password for that key                                     |
-| `FOGTRAIL_TEST_REDIS_URL`            | variable | your shell, for `cargo test` | Points the backend integration tests at a throwaway Redis |
+| Name                                 | Kind     | Where it's set               | What it's for                                               |
+| ------------------------------------ | -------- | ---------------------------- | ----------------------------------------------------------- |
+| `TAURI_SIGNING_PRIVATE_KEY`          | secret   | GitHub repo secret           | Signs the auto-update files                                 |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | secret   | GitHub repo secret           | Password for that key                                       |
+| `FOGTRAIL_TEST_REDIS_URL`            | variable | your shell, for `cargo test` | Points the backend integration tests at a throwaway Redis   |
+| `FOGTRAIL_TEST_MYSQL_URL`            | variable | your shell, for `cargo test` | Points the MySQL integration tests at a seeded test server  |
+| `FOGTRAIL_TEST_MYSQL_RW_URL`         | variable | your shell, for `cargo test` | A user that can write, only to prove the session refuses it |
 
 Names only. Values never go in this repo.
 
@@ -91,6 +107,8 @@ The window remembers its size and position between launches.
 ## Security
 
 - Read-only by design: the backend only exposes read commands, and the Redis driver only sends read commands.
+- MySQL is read-only in layers. Every connection starts a read-only session, so the server itself refuses writes. The query editor checks each statement first and refuses more than one statement, anything but `SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN` and `WITH`, `SELECT ... INTO`, row locks (`FOR UPDATE`) and `/*! */` comments, which the server would run. The table browser only builds `SELECT` statements itself. For the strongest guarantee, connect with a user that can only read (the connection form shows this too): `CREATE USER 'fogtrail'@'%' IDENTIFIED BY '<password>'; GRANT SELECT, SHOW VIEW ON your_database.* TO 'fogtrail'@'%';`
+- With TLS on, MySQL certificates and host names are verified. There is no "skip verification" switch.
 - Passwords live in the OS keychain, never in the saved connections file.
 - The webview runs under a strict content security policy: scripts, styles and fonts from the app only, no remote content, and IPC as the only connection it can open.
 - For servers you don't fully trust the credentials of, connect with an ACL user limited to reading, for example `ACL SETUSER fogtrail on >password ~* +@read +info +scan +type +ttl +memory|usage +xinfo -@dangerous`.
@@ -124,7 +142,8 @@ src/            React + TypeScript UI
   components/   sidebar, key tree, value viewers
 src-tauri/      Rust backend
   src/commands/ Tauri commands, the only way the UI reaches the backend
-  src/drivers/  Driver trait and the Redis driver
+  src/drivers/  Driver traits, the Redis driver and the MySQL driver
+  src/sql_guard.rs  Decides which statements the query editor may send
   tests/        integration tests against a real server
   capabilities/ Tauri permission files
 scripts/        dev helpers

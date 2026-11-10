@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { connect } from "../api/browse";
 import { useProfiles } from "../api/queries";
 import { useUi } from "../state/ui";
+import { dropBrowsingCaches } from "../lib/refreshAll";
 
 /** One-step switch between saved connections. Switching closes the open one. */
 export function ConnectionSwitch() {
@@ -12,8 +13,7 @@ export function ConnectionSwitch() {
 
   const change = useMutation({
     mutationFn: async (id: string) => {
-      qc.removeQueries({ queryKey: ["keys"] });
-      qc.removeQueries({ queryKey: ["key"] });
+      dropBrowsingCaches(qc);
       setConnected(await connect(id), id);
     },
   });

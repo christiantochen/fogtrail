@@ -13,6 +13,8 @@ export function persistSession(): () => void {
         expanded: [...s.expanded],
         selected: s.selected,
         filter: s.filter,
+        schema: s.sqlSchema,
+        table: s.sqlTable,
       });
     } else if (prev.connected && !s.connected) {
       // Disconnecting on purpose means "don't pick this up again".

@@ -4,6 +4,7 @@ import { connect, disconnect } from "../api/browse";
 import { useProfiles } from "../api/queries";
 import { useUi } from "../state/ui";
 import { ConnectionForm } from "./ConnectionForm";
+import { dropBrowsingCaches } from "../lib/refreshAll";
 
 export function ConnectionsMain() {
   const profiles = useProfiles();
@@ -17,8 +18,7 @@ export function ConnectionsMain() {
   const qc = useQueryClient();
   const open = useMutation({
     mutationFn: async (id: string) => {
-      qc.removeQueries({ queryKey: ["keys"] });
-      qc.removeQueries({ queryKey: ["key"] });
+      dropBrowsingCaches(qc);
       setConnected(await connect(id), id);
     },
   });
@@ -26,8 +26,7 @@ export function ConnectionsMain() {
   const close = useMutation({
     mutationFn: async () => {
       await disconnect();
-      qc.removeQueries({ queryKey: ["keys"] });
-      qc.removeQueries({ queryKey: ["key"] });
+      dropBrowsingCaches(qc);
       setConnected(null);
     },
   });

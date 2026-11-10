@@ -3,7 +3,7 @@
 //! is flushed, so point it at a throwaway one.
 
 use fogtrail_lib::drivers::redis::RedisDriver;
-use fogtrail_lib::drivers::{BrowseQuery, Driver, Value};
+use fogtrail_lib::drivers::{BrowseQuery, Driver, KeyValueDriver, Value};
 use fogtrail_lib::error::AppError;
 
 static LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -281,7 +281,7 @@ async fn probe_reports_product_and_key_count() {
     };
     let p = d.probe().await.unwrap();
     assert_eq!(p.product, "Redis");
-    assert_eq!(p.key_count, 8);
+    assert_eq!(p.key_count, Some(8));
     assert!(!p.version.is_empty());
 }
 
@@ -352,6 +352,7 @@ async fn switching_database_changes_what_you_browse() {
                 port: port.parse().unwrap(),
                 username: None,
                 database: 15,
+                schema: None,
                 tls: false,
             },
             None,
@@ -360,12 +361,12 @@ async fn switching_database_changes_what_you_browse() {
 
     let info = conns.connect(&saved.id).await.unwrap();
     assert_eq!(info.database, 15);
-    let seeded_keys = conns.driver().unwrap().browse(all(1000)).await.unwrap();
+    let seeded_keys = conns.key_value().unwrap().browse(all(1000)).await.unwrap();
     assert_eq!(seeded_keys.items.len(), 8);
 
     let info = conns.select_database(14).await.unwrap();
     assert_eq!(info.database, 14);
-    let empty = conns.driver().unwrap().browse(all(1000)).await.unwrap();
+    let empty = conns.key_value().unwrap().browse(all(1000)).await.unwrap();
     assert!(empty.items.is_empty());
     // The saved profile still points at db 15.
     assert_eq!(conns.list().unwrap()[0].database, 15);

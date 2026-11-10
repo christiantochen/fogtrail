@@ -1609,3 +1609,478 @@ select option {
 .meter--bad .meter__fill {
   background: var(--danger);
 }
+
+/* SQL browsing (MySQL) */
+.sqlpick {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.schemapick {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card);
+  color: var(--muted);
+}
+.schemapick select {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  appearance: none;
+  text-overflow: ellipsis;
+}
+.schemapick:focus-within {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+.schemapick__count {
+  flex: none;
+  font-size: 12px;
+}
+.more--tight {
+  margin: 0;
+  height: 28px;
+}
+
+.sqltable {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+}
+.sqlpanel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sqlpanel__body {
+  padding: 16px;
+}
+.sqlpanel__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 16px 16px;
+}
+.sqlwrap {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+.sqlgrid {
+  border-collapse: collapse;
+}
+.sqlwrap .sqlgrid {
+  min-width: 100%;
+}
+.sqlgrid th {
+  position: sticky;
+  top: 0;
+  padding: 6px 12px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border-soft);
+  text-align: left;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+.sqlgrid__name {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.sqlgrid__sub {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.sqlgrid td {
+  height: 29px;
+  max-width: 360px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-soft);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sqlgrid .num {
+  text-align: right;
+}
+.sqlgrid__null {
+  font-style: italic;
+  color: var(--muted);
+}
+.sqlgrid--plain {
+  width: 100%;
+}
+.sqlgrid--plain th {
+  position: static;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.sqlgrid--plain td {
+  max-width: none;
+  white-space: normal;
+}
+.sqlsection {
+  margin: 16px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.sqlfoot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 12px;
+  color: var(--secondary);
+}
+.sqlfoot__spacer {
+  flex: 1;
+}
+.chip--icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.btn--icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn--icon .spin {
+  animation: spin 0.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn--icon .spin {
+    animation: none;
+  }
+}
+
+/* Connection form: choosing a data store */
+.drivers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.driver {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  text-align: left;
+}
+.driver:hover {
+  border-color: var(--muted);
+}
+.driver[aria-checked="true"] {
+  border-color: var(--amber);
+  background: var(--selected);
+  color: var(--selected-ink);
+  box-shadow: inset 0 0 0 1px var(--amber);
+}
+.driver[aria-checked="true"] .muted {
+  color: var(--selected-ink);
+}
+.driver__name {
+  font-weight: 600;
+}
+.dbtip {
+  padding: 12px 16px;
+}
+.dbtip p {
+  margin: 4px 0 8px;
+  font-size: 12px;
+}
+.code--tip {
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--sidebar);
+  max-height: none;
+  user-select: text;
+}
+
+/* SQL query editor */
+.queryopen {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  margin: 4px 0 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  font-weight: 500;
+  text-align: left;
+}
+.queryopen:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+.queryopen:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.queryopen[aria-current="true"] {
+  border-color: var(--amber);
+  background: var(--selected);
+  color: var(--selected-ink);
+}
+.queryopen svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+.runkey {
+  align-self: center;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+.querybar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 12px;
+  color: var(--secondary);
+}
+.editor {
+  flex: none;
+  display: flex;
+  height: 180px;
+  min-height: 96px;
+  max-height: 60vh;
+  resize: vertical;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--card);
+  font-size: 13px;
+  line-height: 20px;
+}
+.editor__gutter {
+  flex: none;
+  width: 44px;
+  overflow: hidden;
+  padding: 10px 0;
+  border-right: 1px solid var(--border-soft);
+  background: var(--sidebar);
+  color: var(--muted);
+  text-align: right;
+  user-select: none;
+}
+.editor__lines {
+  padding: 0 10px 0 0;
+}
+.editorwrap {
+  position: relative;
+  flex: none;
+}
+.editor__pane {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.editor__probe {
+  position: absolute;
+  visibility: hidden;
+  white-space: pre;
+}
+.editor__hl,
+.editor__text {
+  padding: 10px 12px;
+  font: inherit;
+  line-height: inherit;
+  white-space: pre;
+  tab-size: 8;
+  letter-spacing: normal;
+}
+.editor__hl {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  color: var(--ink);
+  pointer-events: none;
+}
+.editor__text {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  /* The colours underneath show through; only the caret is drawn here. */
+  color: transparent;
+  caret-color: var(--ink);
+  overflow: auto;
+}
+.editor__text::placeholder {
+  color: var(--muted);
+}
+.editor__text::selection {
+  background: rgb(242 179 61 / 40%);
+}
+.tk-kw {
+  color: var(--json-key);
+}
+.tk-str {
+  color: var(--green);
+}
+.tk-num {
+  color: var(--json-num);
+}
+.tk-cm {
+  color: var(--muted);
+}
+.editor:focus-within {
+  box-shadow: inset 0 0 0 2px var(--amber);
+}
+.queryempty {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--secondary);
+}
+.queryempty h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: var(--ink);
+}
+.queryempty p {
+  margin: 0;
+  font-size: 13px;
+}
+.sqlfoot__warn {
+  color: var(--secondary);
+  font-weight: 500;
+}
+.runlog {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+}
+.runlog li {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 2px 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 12px;
+}
+.runlog__time {
+  color: var(--muted);
+}
+.runlog__sql {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.runlog__text {
+  grid-column: 2;
+  color: var(--secondary);
+}
+.runlog__bad .runlog__text {
+  color: var(--danger);
+}
+
+/* Suggestions under the caret */
+.complete {
+  position: absolute;
+  z-index: 20;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 248px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 8px 24px rgb(24 33 43 / 16%);
+}
+.complete__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.complete__row:hover {
+  background: var(--hover);
+}
+.complete__row[aria-selected="true"] {
+  background: var(--selected);
+  color: var(--selected-ink);
+}
+.complete__tag {
+  flex: none;
+  width: 32px;
+  padding: 1px 0;
+  border-radius: 4px;
+  background: var(--chip);
+  color: var(--chip-ink);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10.5px;
+  text-align: center;
+}
+.complete__tag--column {
+  color: var(--json-key);
+}
+.complete__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.complete__detail {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 11px;
+}

@@ -16,7 +16,28 @@ describe("parseSession", () => {
       expanded: ["shop", "shop:cart"],
       selected: "shop:cart:1",
       filter: "cart",
+      schema: null,
+      table: null,
     });
+  });
+
+  it("keeps the open schema and table of a SQL connection", () => {
+    const raw = JSON.stringify({
+      profileId: "3",
+      database: 0,
+      expanded: [],
+      selected: null,
+      filter: "",
+      schema: "shop",
+      table: "orders",
+    });
+    expect(parseSession(raw)).toMatchObject({
+      schema: "shop",
+      table: "orders",
+    });
+    expect(
+      parseSession(JSON.stringify({ profileId: "3", schema: 5, table: {} })),
+    ).toMatchObject({ schema: null, table: null });
   });
 
   it("fills in what is missing and drops what is the wrong type", () => {
@@ -28,6 +49,8 @@ describe("parseSession", () => {
       expanded: ["a"],
       selected: null,
       filter: "",
+      schema: null,
+      table: null,
     });
   });
 

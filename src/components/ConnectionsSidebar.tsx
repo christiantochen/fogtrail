@@ -57,6 +57,7 @@ export function ConnectionsSidebar() {
                 {p.tls ? " · TLS" : ""}
               </span>
             </span>
+            {p.driver === "mysql" && <span className="badge">MySQL</span>}
           </button>
         ))}
       </nav>

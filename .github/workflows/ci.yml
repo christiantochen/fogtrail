@@ -97,8 +97,18 @@ jobs:
         ports: ["6379:6379"]
         options: >-
           --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -proot" --health-interval 5s --health-timeout 3s --health-retries 20
     env:
       FOGTRAIL_TEST_REDIS_URL: redis://127.0.0.1:6379/15
+      # Throwaway server, throwaway passwords: see scripts/seed-mysql.sql.
+      FOGTRAIL_TEST_MYSQL_URL: mysql://fogtrail_ro:ro-test-pw@127.0.0.1:3306/shop
+      FOGTRAIL_TEST_MYSQL_RW_URL: mysql://fogtrail_rw:rw-test-pw@127.0.0.1:3306/shop
     steps:
       - uses: actions/checkout@v7
 
@@ -122,7 +132,10 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      - name: cargo test (against Redis)
+      - name: Seed MySQL
+        run: mysql -h 127.0.0.1 -uroot -proot < scripts/seed-mysql.sql
+
+      - name: cargo test (against Redis and MySQL)
         run: cargo test
         working-directory: src-tauri
 

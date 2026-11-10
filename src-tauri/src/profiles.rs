@@ -21,8 +21,12 @@ pub struct Profile {
     pub port: u16,
     #[serde(default)]
     pub username: Option<String>,
+    /// Redis database index. MySQL uses `schema` instead.
     #[serde(default)]
     pub database: u32,
+    /// Default schema (MySQL database name), if any.
+    #[serde(default)]
+    pub schema: Option<String>,
     #[serde(default)]
     pub tls: bool,
 }
@@ -43,10 +47,10 @@ impl Profile {
         if self.port == 0 {
             return bad("Enter a port between 1 and 65535.");
         }
-        if self.driver != "redis" {
-            return bad("Only Redis-compatible servers are supported for now.");
+        match self.driver.as_str() {
+            "redis" | "mysql" => Ok(()),
+            _ => bad("Only Redis-compatible servers and MySQL are supported for now."),
         }
-        Ok(())
     }
 
     /// Connection URL, with credentials percent-encoded.
@@ -150,6 +154,7 @@ mod tests {
             port: 6379,
             username: None,
             database: 0,
+            schema: None,
             tls: false,
         }
     }
@@ -157,6 +162,24 @@ mod tests {
     fn store() -> (ProfileStore, PathBuf) {
         let dir = std::env::temp_dir().join(format!("fogtrail-test-{}", uuid::Uuid::new_v4()));
         (ProfileStore::new(dir.join("connections.json")), dir)
+    }
+
+    #[test]
+    fn mysql_is_accepted_and_other_stores_are_not() {
+        let mut p = sample();
+        p.driver = "mysql".into();
+        assert!(p.validate().is_ok());
+        p.driver = "oracle".into();
+        assert!(p.validate().is_err());
+    }
+
+    #[test]
+    fn a_profile_saved_before_schemas_existed_still_loads() {
+        let old = r#"{"id":"a","name":"x","host":"h","port":6379}"#;
+        let p: Profile = serde_json::from_str(old).unwrap();
+        assert_eq!(p.driver, "redis");
+        assert_eq!(p.schema, None);
+        assert!(p.validate().is_ok());
     }
 
     #[test]

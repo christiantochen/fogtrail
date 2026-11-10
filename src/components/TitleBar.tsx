@@ -36,7 +36,13 @@ function Bar() {
   const before = useRef<Element | null>(null);
 
   const connectedId = useUi((s) => s.connectedId);
-  const selected = useUi((s) => s.selected);
+  const selected = useUi((s) =>
+    s.connected?.store === "sql"
+      ? s.sqlTable
+        ? `${s.sqlSchema}.${s.sqlTable}`
+        : null
+      : s.selected,
+  );
   const profiles = useProfiles();
   const name = profiles.data?.find((p) => p.id === connectedId)?.name;
 

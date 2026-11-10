@@ -6,8 +6,13 @@ import type {
   KeyNode,
   Page,
   Profile,
+  QueryResult,
+  RowPage,
+  SchemaInfo,
   ServerInfo,
   StreamPage,
+  TableInfo,
+  TableStructure,
   TestResult,
 } from "./types";
 
@@ -54,3 +59,25 @@ export const serverInfo = () => call<ServerInfo>("server_info");
 
 export const selectDatabase = (database: number) =>
   call<ConnectionInfo>("select_database", { database });
+
+export const listSchemas = () => call<SchemaInfo[]>("list_schemas");
+
+export const listTables = (schema: string) =>
+  call<TableInfo[]>("list_tables", { schema });
+
+export const tableStructure = (schema: string, table: string) =>
+  call<TableStructure>("table_structure", { schema, table });
+
+export const tableRows = (
+  schema: string,
+  table: string,
+  offset: number,
+  count?: number,
+) => call<RowPage>("table_rows", { schema, table, offset, count });
+
+/** Runs one read-only statement. `runId` lets `cancelQuery` stop it. */
+export const runQuery = (sql: string, schema: string | null, runId: string) =>
+  call<QueryResult>("run_query", { sql, schema, runId });
+
+export const cancelQuery = (runId: string) =>
+  call<void>("cancel_query", { runId });

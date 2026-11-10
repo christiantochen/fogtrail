@@ -44,6 +44,22 @@ interface UiState {
   view: "keys" | "server";
   selected: string | null;
   filter: string;
+  /** SQL browsing (MySQL): the open schema and table, the tab and the page. */
+  sqlSchema: string | null;
+  sqlTable: string | null;
+  sqlTab: "data" | "structure";
+  /** Rows skipped before the page on screen. */
+  sqlOffset: number;
+  /** The query editor is open in place of a table. */
+  sqlQueryOpen: boolean;
+  /** What is typed in the editor. Kept while you look at tables and come back. */
+  sqlText: string;
+  openQueryEditor: () => void;
+  setSqlText: (text: string) => void;
+  selectSchema: (schema: string | null) => void;
+  selectTable: (table: string | null) => void;
+  setSqlTab: (tab: "data" | "structure") => void;
+  setSqlOffset: (offset: number) => void;
   /** Only keys of this type (a SCAN TYPE), or null for all. Not remembered. */
   kindFilter: string | null;
   setKindFilter: (kind: string | null) => void;
@@ -105,7 +121,9 @@ export const useUi = create<UiState>((set) => ({
   connected: null,
   connectedId: null,
   quickOpen: false,
-  setQuickOpen: (quickOpen) => set({ quickOpen }),
+  // Quick open searches keys, which a SQL connection doesn't have.
+  setQuickOpen: (quickOpen) =>
+    set((s) => ({ quickOpen: quickOpen && s.connected?.store !== "sql" })),
   customTitleBar: null,
   setCustomTitleBar: (customTitleBar) => set({ customTitleBar }),
   about: false,
@@ -140,12 +158,30 @@ export const useUi = create<UiState>((set) => ({
       expanded: new Set(session.expanded),
       selected: session.selected,
       filter: session.filter,
+      sqlSchema: session.schema,
+      sqlTable: session.table,
     }),
   picking: false,
   editing: null,
   view: "keys",
   selected: null,
   filter: "",
+  sqlSchema: null,
+  sqlTable: null,
+  sqlTab: "data",
+  sqlOffset: 0,
+  sqlQueryOpen: false,
+  sqlText: "",
+  openQueryEditor: () => set({ sqlQueryOpen: true }),
+  setSqlText: (sqlText) => set({ sqlText }),
+  // Changing database keeps the editor open, so a query can be tried on another one.
+  selectSchema: (sqlSchema) =>
+    set({ sqlSchema, sqlTable: null, sqlTab: "data", sqlOffset: 0 }),
+  // Picking a table, or going back up to the database, leaves the editor.
+  selectTable: (sqlTable) =>
+    set({ sqlTable, sqlTab: "data", sqlOffset: 0, sqlQueryOpen: false }),
+  setSqlTab: (sqlTab) => set({ sqlTab }),
+  setSqlOffset: (sqlOffset) => set({ sqlOffset: Math.max(0, sqlOffset) }),
   kindFilter: null,
   setKindFilter: (kindFilter) => set({ kindFilter }),
   sort: "name",
@@ -165,6 +201,12 @@ export const useUi = create<UiState>((set) => ({
         launchError: null,
         selected: null,
         filter: "",
+        sqlSchema: null,
+        sqlTable: null,
+        sqlTab: "data",
+        sqlOffset: 0,
+        sqlQueryOpen: false,
+        sqlText: "",
         kindFilter: null,
         sort: "name",
         expanded: new Set(),
