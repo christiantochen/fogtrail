@@ -1,8 +1,10 @@
-//! Data sources. Each one implements [`Driver`]; Tauri commands only ever talk
-//! to the trait, so adding a database means adding a module here, not changing
-//! the commands or the UI.
+//! Data sources. Each one implements [`Driver`] plus the trait for its kind of
+//! store ([`KeyValueDriver`] today); Tauri commands only ever talk to the traits,
+//! so adding a database means adding a module here, not changing the commands.
 
 pub mod redis;
+
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::Serialize;
@@ -16,6 +18,8 @@ pub struct ConnectionInfo {
     pub driver: String,
     pub address: String,
     pub database: i64,
+    /// Which screen the UI shows: `"keyValue"` for Redis and friends.
+    pub store: String,
 }
 
 /// One step of browsing. `cursor` is opaque to the caller: pass back what the
@@ -183,10 +187,31 @@ pub struct Probe {
     pub key_count: u64,
 }
 
+/// What every data store can do: say what it is and answer a first hello.
 #[async_trait]
 pub trait Driver: Send + Sync {
     fn describe(&self) -> ConnectionInfo;
     async fn probe(&self) -> Result<Probe, AppError>;
+}
+
+/// A connected driver, by the kind of store it is. Commands ask for the kind they
+/// need, so a Redis command on another kind of connection fails with a clear message.
+#[derive(Clone)]
+pub enum Store {
+    KeyValue(Arc<dyn KeyValueDriver>),
+}
+
+impl Store {
+    pub fn driver(&self) -> &dyn Driver {
+        match self {
+            Store::KeyValue(d) => d.as_ref(),
+        }
+    }
+}
+
+/// Stores browsed as a tree of keys (Redis, Valkey, Dragonfly).
+#[async_trait]
+pub trait KeyValueDriver: Driver {
     async fn server_info(&self) -> Result<ServerInfo, AppError>;
     async fn browse(&self, query: BrowseQuery) -> Result<Page<Node>, AppError>;
     async fn read(&self, name: &str) -> Result<Detail, AppError>;

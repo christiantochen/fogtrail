@@ -10,8 +10,8 @@ use redis::aio::{ConnectionManager, ConnectionManagerConfig};
 use tokio::sync::OnceCell;
 
 use super::{
-    BrowseQuery, ConnectionInfo, DatabaseInfo, Detail, Driver, MapEntry, Node, Page, Probe,
-    ServerInfo, StreamEntry, StreamGroup, StreamPage, Value,
+    BrowseQuery, ConnectionInfo, DatabaseInfo, Detail, Driver, KeyValueDriver, MapEntry, Node,
+    Page, Probe, ServerInfo, StreamEntry, StreamGroup, StreamPage, Value,
 };
 use crate::error::AppError;
 
@@ -180,6 +180,33 @@ pub fn parse_database_count(reply: &[String]) -> Option<u32> {
 
 #[async_trait]
 impl Driver for RedisDriver {
+    async fn probe(&self) -> Result<Probe, AppError> {
+        let mut conn = self.connection().await?;
+        let info: String = redis::cmd("INFO")
+            .arg("server")
+            .query_async(&mut conn)
+            .await?;
+        let key_count: u64 = redis::cmd("DBSIZE").query_async(&mut conn).await?;
+        let (product, version) = detect(&info);
+        Ok(Probe {
+            product,
+            version,
+            key_count,
+        })
+    }
+
+    fn describe(&self) -> ConnectionInfo {
+        ConnectionInfo {
+            driver: "Redis".to_string(),
+            address: self.address(),
+            database: self.parsed().map_or(0, |i| i.redis_settings().db()),
+            store: "keyValue".to_string(),
+        }
+    }
+}
+
+#[async_trait]
+impl KeyValueDriver for RedisDriver {
     async fn server_info(&self) -> Result<ServerInfo, AppError> {
         let mut conn = self.connection().await?;
         let raw: String = redis::cmd("INFO").query_async(&mut conn).await?;
@@ -214,29 +241,6 @@ impl Driver for RedisDriver {
             databases: parse_keyspace(&f),
             database_count,
         })
-    }
-
-    async fn probe(&self) -> Result<Probe, AppError> {
-        let mut conn = self.connection().await?;
-        let info: String = redis::cmd("INFO")
-            .arg("server")
-            .query_async(&mut conn)
-            .await?;
-        let key_count: u64 = redis::cmd("DBSIZE").query_async(&mut conn).await?;
-        let (product, version) = detect(&info);
-        Ok(Probe {
-            product,
-            version,
-            key_count,
-        })
-    }
-
-    fn describe(&self) -> ConnectionInfo {
-        ConnectionInfo {
-            driver: "Redis".to_string(),
-            address: self.address(),
-            database: self.parsed().map_or(0, |i| i.redis_settings().db()),
-        }
     }
 
     async fn browse(&self, query: BrowseQuery) -> Result<Page<Node>, AppError> {

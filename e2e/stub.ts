@@ -11,6 +11,7 @@ export const profiles = [
     port: 6379,
     username: null,
     database: 0,
+    schema: null,
     tls: true,
   },
   {
@@ -21,6 +22,7 @@ export const profiles = [
     port: 6380,
     username: null,
     database: 0,
+    schema: null,
     tls: false,
   },
 ];
@@ -104,6 +106,7 @@ export async function stubBackend(page: Page, extraKeys: string[] = []) {
                 driver: "Redis 6.2.14",
                 address: `${p.host}:${p.port}`,
                 database: 0,
+                store: "keyValue",
               };
             }
             case "scan_keys": {
