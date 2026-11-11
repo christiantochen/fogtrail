@@ -283,3 +283,64 @@ test.describe("the database picker", () => {
     expect(rings).toEqual({ select: "none", row: "solid" });
   });
 });
+
+test.describe("a table with few columns", () => {
+  test("starts at the left edge, and the row lines still reach the right", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 820 });
+    await stubBackend(page, [], { mysql: true });
+    await page.goto("/");
+    await page
+      .locator(".card")
+      .filter({ hasText: "shop-prod" })
+      .getByRole("button", { name: "Connect", exact: true })
+      .click();
+    await page.getByRole("list", { name: "Tables" }).waitFor();
+    // `events` has two columns: id and kind.
+    await page
+      .getByRole("list", { name: "Tables" })
+      .getByRole("button", { name: /^events/ })
+      .click();
+    const grid = page.getByRole("table", { name: "Rows of events" });
+    await grid.waitFor();
+
+    const wrap = await page.locator(".sqlwrap").boundingBox();
+    const id = await grid
+      .getByRole("columnheader", { name: /^id/ })
+      .boundingBox();
+    const kind = await grid
+      .getByRole("columnheader", { name: /^kind/ })
+      .boundingBox();
+    const row = await grid.locator("tbody tr").first().boundingBox();
+    // The id column is as wide as its content, not stretched across the panel.
+    expect(id!.width).toBeLessThan(160);
+    // The data starts at the left edge, and kind sits right next to id.
+    expect(id!.x - wrap!.x).toBeLessThan(2);
+    expect(kind!.x - (id!.x + id!.width)).toBeLessThan(2);
+    // The row still spans the whole panel.
+    expect(row!.width).toBeGreaterThan(wrap!.width - 20);
+  });
+
+  test("the query results hug their content the same way", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 820 });
+    await stubBackend(page, [], { mysql: true });
+    await page.goto("/");
+    await page
+      .locator(".card")
+      .filter({ hasText: "shop-prod" })
+      .getByRole("button", { name: "Connect", exact: true })
+      .click();
+    await page.getByRole("list", { name: "Tables" }).waitFor();
+    await page.getByRole("button", { name: "Query editor" }).click();
+    await page.getByLabel("SQL", { exact: true }).fill("SELECT * FROM orders");
+    await page.getByRole("button", { name: "Run", exact: true }).click();
+    const grid = page.getByRole("table", { name: "Query results" });
+    await grid.waitFor();
+    const wrap = await page.locator(".sqlwrap").boundingBox();
+    const id = await grid.getByRole("columnheader").first().boundingBox();
+    const row = await grid.locator("tbody tr").first().boundingBox();
+    expect(id!.width).toBeLessThan(160);
+    expect(row!.width).toBeGreaterThan(wrap!.width - 20);
+  });
+});

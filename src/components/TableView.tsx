@@ -301,6 +301,7 @@ function DataGrid({
                     </th>
                   );
                 })}
+                <th className="sqlgrid__fill" aria-hidden="true" />
               </tr>
             </thead>
             <tbody>
@@ -333,6 +334,7 @@ function DataGrid({
                       type={page.columns[i].typeName}
                     />
                   ))}
+                  <td className="sqlgrid__fill" aria-hidden="true" />
                 </tr>
               ))}
             </tbody>
