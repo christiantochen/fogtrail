@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { connect } from "../api/browse";
 import { useProfiles } from "../api/queries";
 import { useUi } from "../state/ui";
+import { Dropdown } from "./Dropdown";
 import { dropBrowsingCaches } from "../lib/refreshAll";
 
 /** One-step switch between saved connections. Switching closes the open one. */
@@ -21,18 +22,17 @@ export function ConnectionSwitch() {
   const list = profiles.data ?? [];
   return (
     <div className="connswitch">
-      <select
-        aria-label="Switch connection"
+      <Dropdown
+        label="Switch connection"
         value={connectedId ?? ""}
         disabled={change.isPending}
-        onChange={(e) => change.mutate(e.target.value)}
-      >
-        {list.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-          </option>
-        ))}
-      </select>
+        onChange={(id) => change.mutate(id)}
+        options={list.map((p) => ({
+          value: p.id,
+          label: p.name,
+          meta: p.driver === "mysql" ? "MySQL" : "Redis",
+        }))}
+      />
       {change.isPending && <span className="muted">Switching…</span>}
       {change.error && (
         <span role="alert" className="field__error">

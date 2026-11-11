@@ -12,8 +12,8 @@ import {
 } from "../lib/sql";
 import { useUi } from "../state/ui";
 import { ConnectionSwitch } from "./ConnectionSwitch";
+import { Dropdown } from "./Dropdown";
 import {
-  Chevron,
   DatabaseIcon,
   Lock,
   Mark,
@@ -130,25 +130,22 @@ export function SqlSidebar() {
 
       <div className="sqlpick">
         <span className="section-label">Database</span>
-        <label className="schemapick">
+        <div className="schemapick">
           <DatabaseIcon />
-          <select
-            aria-label="Database"
+          <Dropdown
+            label="Database"
             value={schema ?? ""}
             disabled={!schemas.isSuccess}
-            onChange={(e) => {
+            onChange={(name) => {
               setFilter("");
-              selectSchema(e.target.value);
+              selectSchema(name);
             }}
-          >
-            {schema === null && <option value="">Loading…</option>}
-            {shownSchemas.map((s) => (
-              <option key={s.name} value={s.name}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-          <Chevron className="schemapick__chev" width={12} height={12} />
+            options={
+              schema === null
+                ? [{ value: "", label: "Loading…" }]
+                : shownSchemas.map((x) => ({ value: x.name, label: x.name }))
+            }
+          />
           {schemas.isSuccess && (
             <span className="schemapick__count">
               {Math.max(
@@ -158,7 +155,7 @@ export function SqlSidebar() {
               of {shownSchemas.length}
             </span>
           )}
-        </label>
+        </div>
         {schemas.isSuccess && !showSystem && hiddenCount > 0 && (
           <button
             type="button"

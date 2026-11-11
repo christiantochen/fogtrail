@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
+import { box, choose, optionTexts } from "./dropdown";
 import { stubBackend } from "./stub";
 
 // Specs for the quality-of-life work planned after v0.2.0. They are marked
@@ -114,7 +115,10 @@ test.describe("resume on launch", () => {
     await page.locator('button.row[data-folder="shop:cart"]').click();
     await page.getByRole("button", { name: "123" }).click();
     await page.reload();
-    await expect(page.getByLabel("Switch connection")).toHaveValue("1");
+    await expect(box(page, "Switch connection")).toHaveAttribute(
+      "data-value",
+      "1",
+    );
     await expect(
       page.getByRole("heading", { name: "shop:cart:123" }),
     ).toBeVisible();
@@ -210,7 +214,10 @@ test.describe("quick open", () => {
     await dialog(page)
       .getByRole("option", { name: /local-valkey/ })
       .click();
-    await expect(page.getByLabel("Switch connection")).toHaveValue("2");
+    await expect(box(page, "Switch connection")).toHaveAttribute(
+      "data-value",
+      "2",
+    );
   });
 
   test("a miss says so", async ({ page }) => {
@@ -335,7 +342,7 @@ test.describe("pinned keys", () => {
     await expect(
       pinned(page).getByRole("button", { name: "config", exact: true }),
     ).toBeVisible();
-    await page.getByLabel("Switch connection").selectOption("2");
+    await choose(page, "Switch connection", "2");
     await expect(pinned(page)).toHaveCount(0);
   });
 
@@ -507,12 +514,11 @@ test.describe("auto-refresh", () => {
     await page.getByRole("button", { name: "live:counter" }).first().click();
     await expect(page.getByText('"count"')).toBeVisible();
   }
-  const pick = (page: Page, v: string) =>
-    page.getByLabel("Auto-refresh").selectOption(v);
+  const pick = (page: Page, v: string) => choose(page, "Auto-refresh", v);
 
   test("it is off by default and the value stays put", async ({ page }) => {
     await open(page);
-    await expect(page.getByLabel("Auto-refresh")).toHaveValue("0");
+    await expect(box(page, "Auto-refresh")).toHaveAttribute("data-value", "0");
     await expect(page.locator(".live")).toHaveCount(0);
     await page.clock.fastForward(30_000);
     await expect(page.locator(".fl", { hasText: '"count": 1' })).toBeVisible();
@@ -548,7 +554,7 @@ test.describe("auto-refresh", () => {
       .click();
     await page.getByLabel("Folder delimiter").fill("");
     await page.getByRole("button", { name: "doc:1" }).first().click();
-    await page.getByLabel("Auto-refresh").selectOption("2");
+    await choose(page, "Auto-refresh", "2");
     await page.clock.fastForward(6_100);
     await expect(page.locator(".live")).toContainText("Live");
     await expect(page.locator(".fl--fresh")).toHaveCount(0);
@@ -558,7 +564,7 @@ test.describe("auto-refresh", () => {
     await open(page);
     await pick(page, "5");
     await page.reload();
-    await expect(page.getByLabel("Auto-refresh")).toHaveValue("5");
+    await expect(box(page, "Auto-refresh")).toHaveAttribute("data-value", "5");
   });
 
   test("a failed read pauses it and keeps the last value on screen", async ({
@@ -766,12 +772,13 @@ test.describe("database picker and server info", () => {
     page,
   }) => {
     await open(page);
-    const picker = page.getByLabel("Database");
+    const picker = box(page, "Database");
     await expect(picker).toBeAttached();
-    await expect(picker.locator("option")).toHaveCount(16);
-    await expect(picker.locator("option").first()).toHaveText(/db0 · \d+ keys/);
+    const texts = await optionTexts(page, "Database");
+    expect(texts).toHaveLength(16);
+    expect(texts[0]).toMatch(/^db0 · \d+ keys$/);
     // Closed, it shows only the name, and it sits in the search row.
-    await expect(page.locator(".dbpick__shown")).toHaveText("db0");
+    await expect(picker).toHaveText("db0");
     await expect(
       page.locator(".filter").getByLabel("Search keys"),
     ).toBeVisible();
@@ -849,10 +856,10 @@ test.describe("type filter and sort", () => {
     page,
   }) => {
     await open(page, ["plain", "temp:x", "soon:y"]);
-    await page.getByLabel("Sort keys").selectOption("expiry");
+    await choose(page, "Sort keys", "expiry");
     await expect(rows(page)).toHaveText(["soon:y", "temp:x"]);
     await expect(page.getByText(/Expiring · 2/)).toBeVisible();
-    await page.getByLabel("Sort keys").selectOption("name");
+    await choose(page, "Sort keys", "name");
     await expect(rows(page).filter({ hasText: "plain" })).toHaveCount(1);
   });
 
@@ -861,10 +868,13 @@ test.describe("type filter and sort", () => {
   }) => {
     await open(page, ["hash:a", "plain"]);
     await page.getByRole("button", { name: "HASH", exact: true }).click();
-    await page.getByLabel("Sort keys").selectOption("expiry");
-    await page.getByLabel("Switch connection").selectOption("2");
-    await expect(page.getByLabel("Switch connection")).toHaveValue("2");
-    await expect(page.getByLabel("Sort keys")).toHaveValue("name");
+    await choose(page, "Sort keys", "expiry");
+    await choose(page, "Switch connection", "2");
+    await expect(box(page, "Switch connection")).toHaveAttribute(
+      "data-value",
+      "2",
+    );
+    await expect(box(page, "Sort keys")).toHaveAttribute("data-value", "name");
     await expect(page.getByRole("button", { name: "All" })).toHaveAttribute(
       "aria-pressed",
       "true",
