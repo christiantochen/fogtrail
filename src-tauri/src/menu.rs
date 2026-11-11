@@ -17,6 +17,7 @@ pub mod id {
     pub const QUICK_OPEN: &str = "quick-open";
     pub const FIND_VALUE: &str = "find-value";
     pub const CHECK_UPDATES: &str = "check-updates";
+    #[cfg(not(target_os = "macos"))]
     pub const ABOUT: &str = "about";
     pub const VIEW: &str = "view";
     pub const THEME: &str = "theme";

@@ -632,17 +632,17 @@ async fn read_rows(conn: &mut sqlx::MySqlConnection, sql: &str) -> Result<Rows, 
         }
     }
     // No rows means no row to read the column names from. Ask the server to describe it.
-    if columns.is_empty() {
-        if let Ok(d) = conn.describe(sql).await {
-            columns = d
-                .columns()
-                .iter()
-                .map(|c| ResultColumn {
-                    name: c.name().to_string(),
-                    type_name: c.type_info().name().to_string(),
-                })
-                .collect();
-        }
+    if columns.is_empty()
+        && let Ok(d) = conn.describe(sql).await
+    {
+        columns = d
+            .columns()
+            .iter()
+            .map(|c| ResultColumn {
+                name: c.name().to_string(),
+                type_name: c.type_info().name().to_string(),
+            })
+            .collect();
     }
     Ok((columns, rows, truncated))
 }

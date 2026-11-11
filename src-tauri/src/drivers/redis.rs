@@ -408,7 +408,7 @@ async fn read_hash(conn: &mut ConnectionManager, name: &str, key: &[u8]) -> Read
             .arg(ITEM_LIMIT)
             .query_async(conn)
             .await?;
-        for pair in flat.chunks_exact(2) {
+        for pair in flat.as_chunks::<2>().0.iter() {
             entries.push(MapEntry {
                 key: lossy(&pair[0]),
                 value: lossy(&pair[1]),
@@ -561,7 +561,9 @@ async fn fetch_stream(
         .map(|(id, flat)| StreamEntry {
             time_ms: time_of(&id),
             fields: flat
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|p| MapEntry {
                     key: lossy(&p[0]),
                     value: lossy(&p[1]),
