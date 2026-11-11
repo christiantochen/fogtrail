@@ -752,15 +752,16 @@ test.describe("title bar (Windows)", () => {
     await expect(page.getByRole("menu")).toHaveCount(0);
     await page.keyboard.press("F11");
     await expect(bar(page)).toBeVisible();
+    // The bar hides before the window goes full screen, and shows before it leaves.
     expect(await win(page)).toEqual([
-      "set_fullscreen:true",
-      "set_fullscreen:false",
+      "toggle_fullscreen (bar hidden)",
+      "toggle_fullscreen (bar shown)",
     ]);
   });
 
-  test("full screen from maximized restores first, then maximizes again", async ({
-    page,
-  }) => {
+  // The backend restores and re-maximizes (src-tauri/src/window.rs); the page
+  // only asks once each way and doesn't touch maximize itself.
+  test("full screen from maximized is one call each way", async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as { __maximized: boolean }).__maximized = true;
     });
@@ -773,10 +774,8 @@ test.describe("title bar (Windows)", () => {
       bar(page).getByRole("button", { name: "Restore" }),
     ).toBeVisible();
     expect(await win(page)).toEqual([
-      "toggle_maximize",
-      "set_fullscreen:true",
-      "set_fullscreen:false",
-      "toggle_maximize",
+      "toggle_fullscreen (bar hidden)",
+      "toggle_fullscreen (bar shown)",
     ]);
   });
 

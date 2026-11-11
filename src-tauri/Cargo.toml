@@ -41,6 +41,9 @@ keyring = { version = "3", features = ["apple-native"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }
+# Turns off the window animations while full screen restores a maximized window.
+# The same version Tauri uses, so it adds nothing to the app.
+windows = { version = "0.61", features = ["Win32_Graphics_Dwm"] }
 
 [target.'cfg(not(any(target_os = "macos", target_os = "windows")))'.dependencies]
 keyring = { version = "3", features = ["linux-native"] }

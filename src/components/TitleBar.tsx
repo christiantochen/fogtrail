@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProfiles } from "../api/queries";
 import {
@@ -63,6 +64,8 @@ function Bar() {
   }, []);
 
   const run = (id: string) => {
+    // Hide or show the bar before the window resizes, so the page moves once.
+    if (id === "win:fullscreen") flushSync(() => setFullscreen(!fullscreen));
     if (id.startsWith("win:")) void windowAction(id).then(sync);
     else if (id.startsWith("edit:")) runEdit(id.slice(5));
     else runMenuAction(id, handlers);

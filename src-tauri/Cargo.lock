@@ -993,6 +993,7 @@ dependencies = [
  "tokio",
  "urlencoding",
  "uuid",
+ "windows",
 ]
 
 [[package]]

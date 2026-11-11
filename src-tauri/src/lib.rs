@@ -9,6 +9,7 @@ pub mod profiles;
 pub mod secrets;
 pub mod sql_guard;
 pub mod theme;
+pub mod window;
 
 #[cfg(not(windows))]
 use tauri::Emitter;
@@ -76,6 +77,7 @@ pub fn run() {
             commands::run_query,
             commands::cancel_query,
             theme::set_theme,
+            window::toggle_fullscreen,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
