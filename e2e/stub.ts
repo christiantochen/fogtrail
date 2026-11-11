@@ -91,16 +91,30 @@ export async function stubBackend(
             case "plugin:window|is_decorated":
               return !(window as unknown as { __customTitleBar?: boolean })
                 .__customTitleBar;
+            // __maximized and __fullscreen hold the window's state.
             case "plugin:window|is_maximized":
+              return !!(window as unknown as { __maximized?: boolean })
+                .__maximized;
             case "plugin:window|is_fullscreen":
-              return false;
+              return !!(window as unknown as { __fullscreen?: boolean })
+                .__fullscreen;
             case "plugin:window|minimize":
             case "plugin:window|toggle_maximize":
             case "plugin:window|close":
             case "plugin:window|set_fullscreen":
             case "plugin:process|exit": {
-              const w = window as unknown as { __win?: string[] };
-              (w.__win ??= []).push(cmd.split("|")[1]);
+              const w = window as unknown as {
+                __win?: string[];
+                __maximized?: boolean;
+                __fullscreen?: boolean;
+              };
+              const name = cmd.split("|")[1];
+              if (name === "toggle_maximize") w.__maximized = !w.__maximized;
+              if (name === "set_fullscreen")
+                w.__fullscreen = (args as unknown as { value: boolean }).value;
+              (w.__win ??= []).push(
+                name === "set_fullscreen" ? `${name}:${w.__fullscreen}` : name,
+              );
               return null;
             }
             case "set_theme": {

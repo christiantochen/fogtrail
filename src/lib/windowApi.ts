@@ -23,6 +23,35 @@ export async function isMaximized(): Promise<boolean> {
   }
 }
 
+export async function isFullscreen(): Promise<boolean> {
+  try {
+    return await win().isFullscreen();
+  } catch {
+    return false;
+  }
+}
+
+// Whether the window was maximized when full screen began, so leaving it puts
+// the window back the way it was.
+let maximizedBeforeFullscreen = false;
+
+/**
+ * Windows keeps a maximized frameless window above the taskbar, even in full
+ * screen, so a maximized window is restored first and maximized again after.
+ */
+async function toggleFullscreen(): Promise<void> {
+  const w = win();
+  if (await w.isFullscreen()) {
+    await w.setFullscreen(false);
+    if (maximizedBeforeFullscreen) await w.toggleMaximize();
+    maximizedBeforeFullscreen = false;
+    return;
+  }
+  maximizedBeforeFullscreen = await w.isMaximized();
+  if (maximizedBeforeFullscreen) await w.toggleMaximize();
+  await w.setFullscreen(true);
+}
+
 /** Calls back when the window is resized or maximized. Returns an unsubscribe. */
 export function onResized(cb: () => void): () => void {
   let off: (() => void) | undefined;
@@ -50,7 +79,7 @@ export async function windowAction(id: string): Promise<void> {
       case "win:exit":
         return await exit(0);
       case "win:fullscreen":
-        return await w.setFullscreen(!(await w.isFullscreen()));
+        return await toggleFullscreen();
     }
   } catch {
     // Outside Tauri there is no window to control.
