@@ -1,0 +1,285 @@
+import type { Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
+import { stubBackend } from "./stub";
+
+async function openOrders(page: Page) {
+  await stubBackend(page, [], { mysql: true });
+  await page.goto("/");
+  await page
+    .locator(".card")
+    .filter({ hasText: "shop-prod" })
+    .getByRole("button", { name: "Connect", exact: true })
+    .click();
+  await page.getByRole("list", { name: "Tables" }).waitFor();
+  await page
+    .getByRole("list", { name: "Tables" })
+    .getByRole("button", { name: /^orders/ })
+    .click();
+  await page.getByRole("table", { name: "Rows of orders" }).waitFor();
+}
+
+const filterBox = (page: Page) => page.getByLabel("WHERE filter");
+const apply = (page: Page) => page.getByRole("button", { name: /^Apply/ });
+const views = (page: Page) =>
+  page.evaluate(
+    () => (window as unknown as { __rowViews: unknown[] }).__rowViews,
+  );
+
+test.describe("the table's data view", () => {
+  test("shows JSON as a chip and a timestamp with a quiet time", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    const grid = page.getByRole("table", { name: "Rows of orders" });
+    const first = grid.locator("tbody tr").nth(0);
+    await expect(first.locator(".jchip")).toHaveText("{ } 2 items");
+    await expect(grid.locator("tbody tr").nth(1).locator(".jchip")).toHaveText(
+      "{ } 1 key",
+    );
+    await expect(first.locator(".sqlgrid__time")).toHaveText("09:42:07");
+    // The full value is still there on hover.
+    await expect(first.locator("td").nth(6)).toHaveAttribute(
+      "title",
+      "2026-11-11 09:42:07",
+    );
+  });
+
+  test("a click on a heading sorts up, then down, then back", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    const total = page.getByRole("columnheader", { name: /total/ });
+    const ids = () =>
+      page
+        .getByRole("table", { name: "Rows of orders" })
+        .locator("tbody tr td:first-child")
+        .allTextContents();
+    await expect(await ids()).toEqual(["48213", "48212", "48211"]);
+
+    await total.getByRole("button").click();
+    await expect(total).toHaveAttribute("aria-sort", "ascending");
+    await expect.poll(ids).toEqual(["48212", "48213", "48211"]);
+
+    await total.getByRole("button").click();
+    await expect(total).toHaveAttribute("aria-sort", "descending");
+    await expect.poll(ids).toEqual(["48211", "48213", "48212"]);
+
+    await total.getByRole("button").click();
+    await expect(total).not.toHaveAttribute("aria-sort", /.+/);
+    await expect.poll(ids).toEqual(["48213", "48212", "48211"]);
+
+    const last = (await views(page)).at(-1);
+    expect(last).toEqual({});
+  });
+});
+
+test.describe("the WHERE filter", () => {
+  test("starts empty and says what it is", async ({ page }) => {
+    await openOrders(page);
+    await expect(filterBox(page)).toHaveValue("");
+    await expect(page.getByText("WHERE", { exact: true })).toBeVisible();
+    await expect(page.getByText(/checked like the query editor/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Clear" })).toBeDisabled();
+  });
+
+  test("Enter applies it, the rows narrow, and the backend is asked", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    await filterBox(page).fill("status = 'paid'");
+    await filterBox(page).press("Enter");
+    const rows = page
+      .getByRole("table", { name: "Rows of orders" })
+      .locator("tbody tr");
+    await expect(rows).toHaveCount(2);
+    await expect(page.getByText("Filtered · Rows 1–2")).toBeVisible();
+    expect((await views(page)).at(-1)).toEqual({ filter: "status = 'paid'" });
+  });
+
+  test("Clear brings every row back", async ({ page }) => {
+    await openOrders(page);
+    await filterBox(page).fill("status = 'paid'");
+    await apply(page).click();
+    await expect(page.getByText("Filtered · Rows 1–2")).toBeVisible();
+    await page.getByRole("button", { name: "Clear" }).click();
+    await expect(filterBox(page)).toHaveValue("");
+    await expect(
+      page.getByRole("table", { name: "Rows of orders" }).locator("tbody tr"),
+    ).toHaveCount(3);
+    expect((await views(page)).at(-1)).toEqual({});
+  });
+
+  test("colours the text as it is typed", async ({ page }) => {
+    await openOrders(page);
+    await filterBox(page).fill("status = 'paid' AND total > 100");
+    const colors = page.locator(".filterbar__colors");
+    await expect(colors.locator(".tk-str")).toHaveText("'paid'");
+    await expect(colors.locator(".tk-kw")).toHaveText("AND");
+    await expect(colors.locator(".tk-num")).toHaveText("100");
+  });
+
+  test("no matches says so and keeps the filter to clear", async ({ page }) => {
+    await openOrders(page);
+    await filterBox(page).fill("nomatch = 1");
+    await apply(page).click();
+    await expect(
+      page.getByText("No rows match this filter. Clear it to see all rows."),
+    ).toBeVisible();
+    await expect(page.getByText("Filtered · No rows")).toBeVisible();
+  });
+
+  test("a blocked filter says nothing was sent and keeps the text", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    await filterBox(page).fill("1=1; DROP TABLE orders");
+    await apply(page).click();
+    const alert = page.getByRole("alert");
+    await expect(alert).toContainText("Blocked.");
+    await expect(alert).toContainText("Nothing was sent to the server.");
+    await expect(filterBox(page)).toHaveValue("1=1; DROP TABLE orders");
+    await expect(
+      page.getByRole("table", { name: "Rows of orders" }),
+    ).toHaveCount(0);
+    // No retry button for a filter: fixing the text is the way forward.
+    await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(
+      0,
+    );
+  });
+
+  test("a server error is shown in the server's words, and fixing it recovers", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    await filterBox(page).fill("boom > 1");
+    await apply(page).click();
+    await expect(page.getByRole("alert")).toContainText(
+      "Unknown column 'boom' in 'where clause'",
+    );
+    await expect(page.getByRole("alert")).not.toContainText("Blocked.");
+    await filterBox(page).fill("status = 'paid'");
+    await apply(page).click();
+    await expect(
+      page.getByRole("table", { name: "Rows of orders" }).locator("tbody tr"),
+    ).toHaveCount(2);
+  });
+
+  test("a different table starts with no filter", async ({ page }) => {
+    await openOrders(page);
+    await filterBox(page).fill("status = 'paid'");
+    await apply(page).click();
+    await expect(page.getByText("Filtered · Rows 1–2")).toBeVisible();
+    await page
+      .getByRole("list", { name: "Tables" })
+      .getByRole("button", { name: /^events/ })
+      .click();
+    await expect(filterBox(page)).toHaveValue("");
+  });
+
+  test("the query editor has no filter bar", async ({ page }) => {
+    await openOrders(page);
+    await page.getByRole("button", { name: "Query editor" }).click();
+    await expect(filterBox(page)).toHaveCount(0);
+  });
+});
+
+test.describe("the row panel", () => {
+  test("a click opens the row, JSON is laid out, Esc closes it", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    await page
+      .getByRole("table", { name: "Rows of orders" })
+      .locator("tbody tr")
+      .nth(0)
+      .click();
+    const panel = page.getByRole("complementary", { name: "Row details" });
+    await expect(panel).toBeVisible();
+    await expect(panel).toContainText("Row 1 of 3");
+    await expect(panel).toContainText("orders · id 48213");
+    await expect(panel.getByText("184.50")).toBeVisible();
+    await expect(panel.getByText("NULL")).toBeVisible();
+    // The JSON is spread over lines, not one string.
+    await expect(panel.locator(".code")).toContainText('"sku": "BK-114"');
+    await page.keyboard.press("Escape");
+    await expect(panel).toHaveCount(0);
+  });
+
+  test("the arrows move between rows, and stop at the ends", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    await page
+      .getByRole("table", { name: "Rows of orders" })
+      .locator("tbody tr")
+      .nth(0)
+      .click();
+    const panel = page.getByRole("complementary", { name: "Row details" });
+    await expect(
+      panel.getByRole("button", { name: "Previous row" }),
+    ).toBeDisabled();
+    await panel.getByRole("button", { name: "Next row" }).click();
+    await expect(panel).toContainText("Row 2 of 3");
+    await expect(panel).toContainText("orders · id 48212");
+    await panel.getByRole("button", { name: "Next row" }).click();
+    await expect(
+      panel.getByRole("button", { name: "Next row" }),
+    ).toBeDisabled();
+  });
+
+  test("a row opens from the keyboard", async ({ page }) => {
+    await openOrders(page);
+    const row = page
+      .getByRole("table", { name: "Rows of orders" })
+      .locator("tbody tr")
+      .nth(1);
+    await row.focus();
+    await row.press("Enter");
+    await expect(
+      page.getByRole("complementary", { name: "Row details" }),
+    ).toContainText("id 48212");
+  });
+
+  test("Copy rows copies the page as tab-separated text", async ({ page }) => {
+    await page.addInitScript(() => {
+      const w = window as unknown as { __copied: string[] };
+      w.__copied = [];
+      Object.defineProperty(navigator, "clipboard", {
+        value: { writeText: async (t: string) => void w.__copied.push(t) },
+        configurable: true,
+      });
+    });
+    await openOrders(page);
+    await page.getByRole("button", { name: "Copy rows" }).click();
+    const copied = await page.evaluate(
+      () => (window as unknown as { __copied: string[] }).__copied,
+    );
+    expect(copied).toHaveLength(1);
+    expect(copied[0].split("\n")[0]).toBe(
+      "id\tcustomer_id\tstatus\ttotal\tnotes\titems\tcreated_at",
+    );
+    expect(copied[0].split("\n")).toHaveLength(4);
+  });
+});
+
+test.describe("the database picker", () => {
+  test("draws one focus ring, on the row, not on the select inside it", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    await page.getByLabel("Database").focus();
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press("Tab");
+    const rings = await page.evaluate(() => {
+      const select = document.querySelector<HTMLElement>(
+        '.schemapick select[aria-label="Database"]',
+      )!;
+      const row = select.closest<HTMLElement>(".schemapick")!;
+      return {
+        select: getComputedStyle(select).outlineStyle,
+        row: getComputedStyle(row).outlineStyle,
+      };
+    });
+    expect(rings).toEqual({ select: "none", row: "solid" });
+  });
+});

@@ -8,7 +8,7 @@ pub mod redis;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
 
@@ -311,6 +311,19 @@ pub struct RowPage {
     pub has_more: bool,
 }
 
+/// How a table's rows are asked for: an optional filter and an optional sort.
+/// `Default` is "all rows, in primary key order".
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct RowView {
+    /// A SQL expression for `WHERE`, typed by the person. Checked by `sql_guard`
+    /// as part of the whole statement before anything is sent.
+    pub filter: Option<String>,
+    /// A column of the table to sort by. Only real column names are accepted.
+    pub sort_column: Option<String>,
+    pub sort_desc: bool,
+}
+
 /// What a query from the editor returned.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -336,6 +349,7 @@ pub trait SqlDriver: Driver {
         table: &str,
         offset: u64,
         count: u32,
+        view: &RowView,
     ) -> Result<RowPage, AppError>;
     /// Runs one read-only statement typed by the person. The statement is checked
     /// by `sql_guard` first. `schema` is the database unqualified names refer to;

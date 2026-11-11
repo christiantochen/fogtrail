@@ -5,12 +5,18 @@ import {
   columnSub,
   elapsedLabel,
   filterTables,
+  isJsonType,
   isNumericType,
+  isTimeType,
+  jsonSummary,
   lineCount,
+  nextSort,
   pickSchema,
+  prettyJson,
   rangeLabel,
   resultToTsv,
   rowCountLabel,
+  splitTimestamp,
   visibleSchemas,
 } from "./sql";
 
@@ -167,5 +173,56 @@ describe("lineCount", () => {
   it("counts a trailing newline as a new line, like the editor does", () => {
     expect(lineCount("a\nb")).toBe(2);
     expect(lineCount("a\nb\n")).toBe(3);
+  });
+});
+
+describe("table data helpers", () => {
+  it("cycles a sort up, down, off, and restarts on another column", () => {
+    const a = nextSort(null, "total");
+    expect(a).toEqual({ column: "total", desc: false });
+    const b = nextSort(a, "total");
+    expect(b).toEqual({ column: "total", desc: true });
+    expect(nextSort(b, "total")).toBeNull();
+    expect(nextSort(b, "id")).toEqual({ column: "id", desc: false });
+  });
+
+  it("summarises JSON arrays and objects, and nothing else", () => {
+    expect(jsonSummary("[1,2,3]")).toBe("3 items");
+    expect(jsonSummary("[1]")).toBe("1 item");
+    expect(jsonSummary('{"a":1,"b":2}')).toBe("2 keys");
+    expect(jsonSummary("{}")).toBe("0 keys");
+    expect(jsonSummary("42")).toBeNull();
+    expect(jsonSummary("null")).toBeNull();
+    expect(jsonSummary("not json")).toBeNull();
+  });
+
+  it("lays JSON out over lines and refuses other text", () => {
+    expect(prettyJson('{"a":[1,2]}')).toBe(
+      '{\n  "a": [\n    1,\n    2\n  ]\n}',
+    );
+    expect(prettyJson("plain")).toBeNull();
+  });
+
+  it("splits a timestamp into date and time", () => {
+    expect(splitTimestamp("2026-11-11 08:51:20")).toEqual([
+      "2026-11-11",
+      "08:51:20",
+    ]);
+    expect(splitTimestamp("2026-11-11 08:51:20.123456")?.[1]).toBe(
+      "08:51:20.123456",
+    );
+    expect(splitTimestamp("2026-11-11")).toBeNull();
+    expect(splitTimestamp("0000-00-00 00:00:00")).toEqual([
+      "0000-00-00",
+      "00:00:00",
+    ]);
+  });
+
+  it("knows JSON and time column types", () => {
+    expect(isJsonType("JSON")).toBe(true);
+    expect(isJsonType("VARCHAR")).toBe(false);
+    expect(isTimeType("TIMESTAMP")).toBe(true);
+    expect(isTimeType("DATETIME")).toBe(true);
+    expect(isTimeType("DATE")).toBe(false);
   });
 });

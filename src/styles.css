@@ -1639,9 +1639,19 @@ select option {
   appearance: none;
   text-overflow: ellipsis;
 }
+/* One ring for the whole row. The select inside it must not draw its own. */
 .schemapick:focus-within {
   outline: 2px solid var(--amber);
   outline-offset: 1px;
+}
+.schemapick select:focus-visible {
+  outline: none;
+}
+.schemapick__chev {
+  flex: none;
+  color: var(--secondary);
+  transform: rotate(90deg);
+  pointer-events: none;
 }
 .schemapick__count {
   flex: none;
@@ -1709,6 +1719,7 @@ select option {
   color: var(--muted);
 }
 .sqlgrid td {
+  font-variant-numeric: tabular-nums;
   height: 29px;
   max-width: 360px;
   padding: 0 12px;
@@ -2083,4 +2094,245 @@ select option {
   white-space: nowrap;
   color: var(--muted);
   font-size: 11px;
+}
+
+/* Table data: filter, sortable headings, row panel */
+.filterbar {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.filterbar__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.filterbar__box {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--main);
+  overflow: hidden;
+}
+.filterbar__box:focus-within {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+.filterbar__where {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  background: var(--chip);
+  color: var(--chip-ink);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.6px;
+}
+.filterbar__field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.filterbar__colors,
+.filterbar__input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+  font-size: 12.5px;
+  line-height: 34px;
+  letter-spacing: 0;
+  white-space: pre;
+  tab-size: 4;
+}
+.filterbar__colors {
+  overflow: hidden;
+  color: var(--ink);
+  pointer-events: none;
+}
+.filterbar__input {
+  width: 100%;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--ink);
+}
+.filterbar__input:focus-visible {
+  outline: none;
+}
+.filterbar__input::placeholder {
+  color: var(--muted);
+}
+.filterbar__input::selection {
+  background: rgb(242 179 61 / 40%);
+  color: transparent;
+}
+.filterbar__kbd {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgb(24 33 43 / 20%);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+}
+.filterbar__hint {
+  margin: 0;
+  padding-left: 2px;
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sqldata {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.sqldata__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sorthead {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.num .sorthead {
+  margin-left: auto;
+}
+.sorthead:hover .sqlgrid__name {
+  color: var(--secondary);
+}
+.sorthead--on .sqlgrid__name {
+  color: var(--selected-ink);
+}
+.sorthead__arrow {
+  margin-left: 4px;
+  color: var(--amber);
+}
+.sqlrow {
+  cursor: pointer;
+}
+.sqlrow:hover td {
+  background: var(--hover);
+}
+.sqlrow--open td {
+  background: var(--selected);
+  color: var(--selected-ink);
+}
+.sqlrow--open .sqlgrid__null {
+  color: var(--selected-ink);
+  opacity: 0.7;
+}
+.sqlgrid__time {
+  color: var(--muted);
+}
+.sqlrow--open .sqlgrid__time {
+  color: var(--selected-ink);
+  opacity: 0.7;
+}
+.jchip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: var(--chip);
+  color: var(--chip-ink);
+  font-size: 12px;
+}
+.rowpanel {
+  flex: none;
+  width: 380px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border-soft);
+  background: var(--card);
+}
+.rowpanel__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.rowpanel__title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.rowpanel__label {
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.rowpanel__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 500;
+}
+.rowpanel__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.rowpanel__list {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.rowpanel__item {
+  display: contents;
+}
+.rowpanel__list dt {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.rowpanel__list dd {
+  margin: 0;
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.rowpanel__json {
+  padding: 10px 0 0;
+}
+.rowpanel__jsonhead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.rowpanel__spacer {
+  flex: 1;
+}
+.rowpanel__json .code {
+  margin: 0;
+  padding: 8px 16px 16px;
 }

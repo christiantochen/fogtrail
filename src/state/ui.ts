@@ -50,6 +50,10 @@ interface UiState {
   sqlTab: "data" | "structure";
   /** Rows skipped before the page on screen. */
   sqlOffset: number;
+  /** A SQL expression narrowing the rows on screen (the part after WHERE). */
+  sqlFilter: string;
+  /** The column the rows are sorted by, or null for the table's own order. */
+  sqlSort: { column: string; desc: boolean } | null;
   /** The query editor is open in place of a table. */
   sqlQueryOpen: boolean;
   /** What is typed in the editor. Kept while you look at tables and come back. */
@@ -60,6 +64,9 @@ interface UiState {
   selectTable: (table: string | null) => void;
   setSqlTab: (tab: "data" | "structure") => void;
   setSqlOffset: (offset: number) => void;
+  /** Changing the filter or the sort goes back to the first page. */
+  setSqlFilter: (filter: string) => void;
+  setSqlSort: (sort: { column: string; desc: boolean } | null) => void;
   /** Only keys of this type (a SCAN TYPE), or null for all. Not remembered. */
   kindFilter: string | null;
   setKindFilter: (kind: string | null) => void;
@@ -170,18 +177,36 @@ export const useUi = create<UiState>((set) => ({
   sqlTable: null,
   sqlTab: "data",
   sqlOffset: 0,
+  sqlFilter: "",
+  sqlSort: null,
   sqlQueryOpen: false,
   sqlText: "",
   openQueryEditor: () => set({ sqlQueryOpen: true }),
   setSqlText: (sqlText) => set({ sqlText }),
   // Changing database keeps the editor open, so a query can be tried on another one.
   selectSchema: (sqlSchema) =>
-    set({ sqlSchema, sqlTable: null, sqlTab: "data", sqlOffset: 0 }),
+    set({
+      sqlSchema,
+      sqlTable: null,
+      sqlTab: "data",
+      sqlOffset: 0,
+      sqlFilter: "",
+      sqlSort: null,
+    }),
   // Picking a table, or going back up to the database, leaves the editor.
   selectTable: (sqlTable) =>
-    set({ sqlTable, sqlTab: "data", sqlOffset: 0, sqlQueryOpen: false }),
+    set({
+      sqlTable,
+      sqlTab: "data",
+      sqlOffset: 0,
+      sqlFilter: "",
+      sqlSort: null,
+      sqlQueryOpen: false,
+    }),
   setSqlTab: (sqlTab) => set({ sqlTab }),
   setSqlOffset: (sqlOffset) => set({ sqlOffset: Math.max(0, sqlOffset) }),
+  setSqlFilter: (sqlFilter) => set({ sqlFilter, sqlOffset: 0 }),
+  setSqlSort: (sqlSort) => set({ sqlSort, sqlOffset: 0 }),
   kindFilter: null,
   setKindFilter: (kindFilter) => set({ kindFilter }),
   sort: "name",
@@ -205,6 +230,8 @@ export const useUi = create<UiState>((set) => ({
         sqlTable: null,
         sqlTab: "data",
         sqlOffset: 0,
+        sqlFilter: "",
+        sqlSort: null,
         sqlQueryOpen: false,
         sqlText: "",
         kindFilter: null,

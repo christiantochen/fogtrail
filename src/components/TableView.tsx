@@ -1,17 +1,31 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
 import { useRows, useStructure, useTables } from "../api/queries";
-import type { ColumnInfo, TableStructure } from "../api/types";
+import type {
+  ColumnInfo,
+  RowPage,
+  RowView,
+  TableStructure,
+} from "../api/types";
 import { copyText } from "../lib/clipboard";
 import { refreshAll } from "../lib/refreshAll";
 import {
   ROWS_PER_PAGE,
   approxRows,
   columnSub,
+  isJsonType,
   isNumericType,
+  isTimeType,
+  jsonSummary,
+  nextSort,
   rangeLabel,
+  resultToTsv,
+  splitTimestamp,
 } from "../lib/sql";
 import { useUi } from "../state/ui";
+import { FilterBar } from "./FilterBar";
 import { Lock, Refresh } from "./Icons";
+import { RowPanel } from "./RowPanel";
 
 /** One table or view: its rows and its structure. */
 export function TableView({
@@ -140,107 +154,280 @@ function Data({
 }) {
   const offset = useUi((s) => s.sqlOffset);
   const setOffset = useUi((s) => s.setSqlOffset);
-  const q = useRows(schema, table, offset);
+  const filter = useUi((s) => s.sqlFilter);
+  const setFilter = useUi((s) => s.setSqlFilter);
+  const sort = useUi((s) => s.sqlSort);
+  const setSort = useUi((s) => s.setSqlSort);
+  const view: RowView = {
+    ...(filter !== "" ? { filter } : {}),
+    ...(sort ? { sortColumn: sort.column, sortDesc: sort.desc } : {}),
+  };
+  const q = useRows(schema, table, offset, view);
 
-  if (q.isError && !q.data) {
+  const bar = <FilterBar key={table} applied={filter} onApply={setFilter} />;
+
+  if (q.isError) {
+    const blocked = q.error.kind === "blocked";
     return (
-      <div className="sqlpanel__body">
-        <div role="alert" className="alert alert--block">
-          {q.error.message}
+      <>
+        {bar}
+        <div className="sqlpanel__body">
+          <div role="alert" className="alert alert--block">
+            <span>
+              {blocked && <strong>Blocked. </strong>}
+              {q.error.message}
+            </span>
+          </div>
+          {filter === "" && (
+            <div className="actions">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void q.refetch()}
+              >
+                Try again
+              </button>
+            </div>
+          )}
         </div>
-        <div className="actions">
-          <button
-            type="button"
-            className="btn"
-            onClick={() => void q.refetch()}
-          >
-            Try again
-          </button>
-        </div>
-      </div>
+      </>
     );
   }
   if (!q.data) {
     return (
-      <div className="sqlpanel__body" aria-busy="true">
-        {Array.from({ length: 6 }, (_, i) => (
-          <div className="skeleton" key={i} />
-        ))}
-      </div>
+      <>
+        {bar}
+        <div className="sqlpanel__body" aria-busy="true">
+          {Array.from({ length: 6 }, (_, i) => (
+            <div className="skeleton" key={i} />
+          ))}
+        </div>
+      </>
     );
   }
 
   const page = q.data;
-  const info = new Map(columns?.map((c) => [c.name, c]));
   return (
     <>
-      <div className="table-wrap sqlwrap">
-        <table className="sqlgrid" aria-label={`Rows of ${table}`}>
-          <thead>
-            <tr>
-              {page.columns.map((c) => {
-                const numeric = isNumericType(c.typeName);
-                return (
-                  <th key={c.name} className={numeric ? "num" : undefined}>
-                    <span className="sqlgrid__name">{c.name}</span>
-                    <span className="sqlgrid__sub mono">
-                      {columnSub(c, info.get(c.name))}
-                    </span>
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {page.rows.map((row, r) => (
-              <tr key={r}>
-                {row.map((cell, i) => {
-                  const numeric = isNumericType(page.columns[i].typeName);
-                  return cell === null ? (
-                    <td key={i} className="sqlgrid__null">
-                      NULL
-                    </td>
-                  ) : (
-                    <td
-                      key={i}
+      {bar}
+      {/* A new page, filter or sort starts with no row open. */}
+      <DataGrid
+        key={`${offset}|${filter}|${sort?.column}|${sort?.desc}`}
+        table={table}
+        page={page}
+        info={new Map(columns?.map((c) => [c.name, c]))}
+        filtered={filter !== ""}
+        sort={sort}
+        onSort={setSort}
+        offset={offset}
+        fetching={q.isFetching}
+        onOffset={setOffset}
+      />
+    </>
+  );
+}
+
+function DataGrid({
+  table,
+  page,
+  info,
+  filtered,
+  sort,
+  onSort,
+  offset,
+  fetching,
+  onOffset,
+}: {
+  table: string;
+  page: RowPage;
+  info: Map<string, ColumnInfo>;
+  filtered: boolean;
+  sort: { column: string; desc: boolean } | null;
+  onSort: (sort: { column: string; desc: boolean } | null) => void;
+  offset: number;
+  fetching: boolean;
+  onOffset: (offset: number) => void;
+}) {
+  const [open, setOpen] = useState<number | null>(null);
+  const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
+  const move = (delta: number) =>
+    setOpen((i) =>
+      i === null ? i : Math.min(page.rows.length - 1, Math.max(0, i + delta)),
+    );
+
+  return (
+    <div className="sqldata">
+      <div className="sqldata__main">
+        <div className="table-wrap sqlwrap">
+          <table className="sqlgrid" aria-label={`Rows of ${table}`}>
+            <thead>
+              <tr>
+                {page.columns.map((c) => {
+                  const numeric = isNumericType(c.typeName);
+                  const active = sort?.column === c.name ? sort : null;
+                  return (
+                    <th
+                      key={c.name}
                       className={numeric ? "num" : undefined}
-                      title={cell}
+                      aria-sort={
+                        active
+                          ? active.desc
+                            ? "descending"
+                            : "ascending"
+                          : undefined
+                      }
                     >
-                      {cell}
-                    </td>
+                      <button
+                        type="button"
+                        className={`sorthead${active ? " sorthead--on" : ""}`}
+                        title="Sort by this column"
+                        onClick={() => onSort(nextSort(sort, c.name))}
+                      >
+                        <span className="sqlgrid__name">
+                          {c.name}
+                          {active && (
+                            <span
+                              className="sorthead__arrow"
+                              aria-hidden="true"
+                            >
+                              {active.desc ? "↓" : "↑"}
+                            </span>
+                          )}
+                        </span>
+                        <span className="sqlgrid__sub mono">
+                          {columnSub(c, info.get(c.name))}
+                        </span>
+                      </button>
+                    </th>
                   );
                 })}
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {page.rows.length === 0 && (
-          <div className="note">
-            {offset > 0 ? "No more rows." : "This table has no rows."}
-          </div>
-        )}
+            </thead>
+            <tbody>
+              {page.rows.map((row, r) => (
+                <tr
+                  key={r}
+                  ref={(el) => {
+                    rowRefs.current[r] = el;
+                  }}
+                  tabIndex={0}
+                  className={open === r ? "sqlrow sqlrow--open" : "sqlrow"}
+                  aria-current={open === r ? "true" : undefined}
+                  onClick={() => setOpen(r)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setOpen(r);
+                    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                      e.preventDefault();
+                      rowRefs.current[
+                        r + (e.key === "ArrowDown" ? 1 : -1)
+                      ]?.focus();
+                    }
+                  }}
+                >
+                  {row.map((cell, i) => (
+                    <Cell
+                      key={i}
+                      value={cell}
+                      type={page.columns[i].typeName}
+                    />
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {page.rows.length === 0 && (
+            <div className="note">
+              {filtered
+                ? "No rows match this filter. Clear it to see all rows."
+                : offset > 0
+                  ? "No more rows."
+                  : "This table has no rows."}
+            </div>
+          )}
+        </div>
+        <div className="sqlfoot">
+          <span>
+            {filtered ? "Filtered · " : ""}
+            {rangeLabel(page.offset, page.rows.length)}
+          </span>
+          <span className="sqlfoot__spacer" />
+          <button
+            type="button"
+            className="btn btn--small"
+            disabled={page.rows.length === 0}
+            onClick={() =>
+              void copyText(resultToTsv(page.columns, page.rows), "rows")
+            }
+          >
+            Copy rows
+          </button>
+          <button
+            type="button"
+            className="btn btn--small"
+            disabled={offset === 0 || fetching}
+            onClick={() => onOffset(offset - ROWS_PER_PAGE)}
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            className="btn btn--small"
+            disabled={!page.hasMore || fetching}
+            onClick={() => onOffset(offset + ROWS_PER_PAGE)}
+          >
+            Next {ROWS_PER_PAGE}
+          </button>
+        </div>
       </div>
-      <div className="sqlfoot">
-        <span>{rangeLabel(page.offset, page.rows.length)}</span>
-        <span className="sqlfoot__spacer" />
-        <button
-          type="button"
-          className="btn btn--small"
-          disabled={offset === 0 || q.isFetching}
-          onClick={() => setOffset(offset - ROWS_PER_PAGE)}
-        >
-          Previous
-        </button>
-        <button
-          type="button"
-          className="btn btn--small"
-          disabled={!page.hasMore || q.isFetching}
-          onClick={() => setOffset(offset + ROWS_PER_PAGE)}
-        >
-          Next {ROWS_PER_PAGE}
-        </button>
-      </div>
-    </>
+      {open !== null && page.rows[open] && (
+        <RowPanel
+          table={table}
+          columns={page.columns}
+          row={page.rows[open]}
+          position={open}
+          count={page.rows.length}
+          onMove={move}
+          onClose={() => {
+            const was = open;
+            setOpen(null);
+            rowRefs.current[was]?.focus();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** One cell: NULL apart from empty text, JSON as a small chip, a timestamp with a quiet time. */
+function Cell({ value, type }: { value: string | null; type: string }) {
+  if (value === null) return <td className="sqlgrid__null">NULL</td>;
+  const numeric = isNumericType(type);
+  if (isJsonType(type)) {
+    const summary = jsonSummary(value);
+    if (summary)
+      return (
+        <td title={value}>
+          <span className="jchip mono">
+            {"{ }"} {summary}
+          </span>
+        </td>
+      );
+  }
+  if (isTimeType(type)) {
+    const parts = splitTimestamp(value);
+    if (parts)
+      return (
+        <td title={value}>
+          {parts[0]} <span className="sqlgrid__time">{parts[1]}</span>
+        </td>
+      );
+  }
+  return (
+    <td className={numeric ? "num" : undefined} title={value}>
+      {value}
+    </td>
   );
 }
 
