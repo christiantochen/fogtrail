@@ -741,6 +741,45 @@ test.describe("title bar (Windows)", () => {
     expect(await win(page)).toEqual(["minimize", "toggle_maximize", "close"]);
   });
 
+  test("F11 hides the bar in full screen and brings it back", async ({
+    page,
+  }) => {
+    await open(page);
+    await page.keyboard.press("F11");
+    await expect(bar(page)).toBeHidden();
+    // No menu to open while the bar is hidden.
+    await page.keyboard.press("Alt+F");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await page.keyboard.press("F11");
+    await expect(bar(page)).toBeVisible();
+    expect(await win(page)).toEqual([
+      "set_fullscreen:true",
+      "set_fullscreen:false",
+    ]);
+  });
+
+  test("full screen from maximized restores first, then maximizes again", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __maximized: boolean }).__maximized = true;
+    });
+    await open(page);
+    await page.keyboard.press("F11");
+    await expect(bar(page)).toBeHidden();
+    await page.keyboard.press("F11");
+    await expect(bar(page)).toBeVisible();
+    await expect(
+      bar(page).getByRole("button", { name: "Restore" }),
+    ).toBeVisible();
+    expect(await win(page)).toEqual([
+      "toggle_maximize",
+      "set_fullscreen:true",
+      "set_fullscreen:false",
+      "toggle_maximize",
+    ]);
+  });
+
   test("shows the connection and key once browsing", async ({ page }) => {
     await open(page);
     await page

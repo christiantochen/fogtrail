@@ -10,7 +10,12 @@ import {
 } from "../lib/appMenu";
 import { runMenuAction } from "../lib/menu";
 import { menuHandlers } from "../lib/menuHandlers";
-import { isMaximized, onResized, windowAction } from "../lib/windowApi";
+import {
+  isFullscreen,
+  isMaximized,
+  onResized,
+  windowAction,
+} from "../lib/windowApi";
 import { useUi } from "../state/ui";
 import { Mark } from "./Icons";
 
@@ -32,6 +37,7 @@ function Bar() {
   const [open, setOpen] = useState<number | null>(null);
   const [active, setActive] = useState(0);
   const [maximized, setMaximized] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
   const drop = useRef<HTMLDivElement>(null);
   const before = useRef<Element | null>(null);
 
@@ -47,14 +53,17 @@ function Bar() {
   const profiles = useProfiles();
   const name = profiles.data?.find((p) => p.id === connectedId)?.name;
 
+  const sync = () => {
+    void isMaximized().then(setMaximized);
+    void isFullscreen().then(setFullscreen);
+  };
   useEffect(() => {
-    const sync = () => void isMaximized().then(setMaximized);
     sync();
     return onResized(sync);
   }, []);
 
   const run = (id: string) => {
-    if (id.startsWith("win:")) void windowAction(id);
+    if (id.startsWith("win:")) void windowAction(id).then(sync);
     else if (id.startsWith("edit:")) runEdit(id.slice(5));
     else runMenuAction(id, handlers);
   };
@@ -81,7 +90,8 @@ function Bar() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const m = mnemonicIndex(e);
-      if (m >= 0) {
+      // In full screen the bar is hidden, so there is no menu to open.
+      if (m >= 0 && !fullscreen) {
         e.preventDefault();
         show(m, true);
         return;
@@ -141,7 +151,8 @@ function Bar() {
     : "Search keys and connections";
 
   return (
-    <header className="titlebar" data-tauri-drag-region>
+    // Hidden, not removed, in full screen: its shortcuts (F11 to leave) still work.
+    <header className="titlebar" hidden={fullscreen} data-tauri-drag-region>
       <span className="titlebar__mark" data-tauri-drag-region>
         <Mark aria-hidden />
       </span>
