@@ -35,7 +35,7 @@ Builds are not code-signed yet, so your OS warns on first launch:
 
 ## Develop
 
-Needs Node.js 24 or newer (an `.nvmrc` is included), Rust 1.85 or newer (via [rustup](https://rustup.rs)) and Docker for the local test servers. On macOS you also need the Xcode Command Line Tools; on Windows, the MSVC Build Tools and WebView2 (preinstalled on Windows 10/11). See the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for details.
+Needs Node.js 24 or newer (an `.nvmrc` is included), Rust 1.88 or newer (via [rustup](https://rustup.rs)) and Docker for the local test servers. On macOS you also need the Xcode Command Line Tools; on Windows, the MSVC Build Tools and WebView2 (preinstalled on Windows 10/11). See the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for details.
 
 ```sh
 npm install
