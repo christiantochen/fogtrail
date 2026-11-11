@@ -17,7 +17,7 @@ import {
   tableRows,
   tableStructure,
 } from "./browse";
-import type { AppError } from "./types";
+import type { AppError, RowView } from "./types";
 
 const PAGE = 500;
 
@@ -133,10 +133,15 @@ export const useStructure = (schema: string, table: string) =>
   });
 
 /** One page of rows. The previous page stays on screen while the next one loads. */
-export const useRows = (schema: string, table: string, offset: number) =>
+export const useRows = (
+  schema: string,
+  table: string,
+  offset: number,
+  view: RowView,
+) =>
   useQuery({
-    queryKey: ["rows", schema, table, offset],
-    queryFn: () => tableRows(schema, table, offset),
+    queryKey: ["rows", schema, table, offset, view],
+    queryFn: () => tableRows(schema, table, offset, view),
     retry: false,
     staleTime: 0,
     placeholderData: keepPreviousData,

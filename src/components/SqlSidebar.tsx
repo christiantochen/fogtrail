@@ -12,6 +12,7 @@ import {
 import { useUi } from "../state/ui";
 import { ConnectionSwitch } from "./ConnectionSwitch";
 import {
+  Chevron,
   DatabaseIcon,
   Lock,
   Mark,
@@ -146,6 +147,7 @@ export function SqlSidebar() {
               </option>
             ))}
           </select>
+          <Chevron className="schemapick__chev" width={12} height={12} />
           {schemas.isSuccess && (
             <span className="schemapick__count">
               {Math.max(

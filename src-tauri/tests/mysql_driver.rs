@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use fogtrail_lib::connections::Connections;
 use fogtrail_lib::drivers::mysql::{self, MySqlDriver};
-use fogtrail_lib::drivers::{Driver, SqlDriver};
+use fogtrail_lib::drivers::{Driver, RowView, SqlDriver};
 use fogtrail_lib::error::AppError;
 use fogtrail_lib::profiles::{Profile, ProfileStore};
 use fogtrail_lib::secrets::MemoryStore;
@@ -161,23 +161,139 @@ async fn a_view_says_it_is_a_view() {
 #[tokio::test]
 async fn rows_page_through_a_long_table() {
     let d = driver_or_skip!();
-    let first = d.table_rows("shop", "events", 0, 100).await.unwrap();
+    let first = d
+        .table_rows("shop", "events", 0, 100, &RowView::default())
+        .await
+        .unwrap();
     assert_eq!(first.rows.len(), 100);
     assert!(first.has_more);
     assert_eq!(first.columns[0].name, "id");
     assert_eq!(first.rows[0][0].as_deref(), Some("1"));
     assert_eq!(first.rows[0][1].as_deref(), Some("tick"));
 
-    let last = d.table_rows("shop", "events", 200, 100).await.unwrap();
+    let last = d
+        .table_rows("shop", "events", 200, 100, &RowView::default())
+        .await
+        .unwrap();
     assert_eq!(last.rows.len(), 50);
     assert!(!last.has_more);
     assert_eq!(last.rows[0][0].as_deref(), Some("201"));
 }
 
+fn filtered(filter: &str) -> RowView {
+    RowView {
+        filter: Some(filter.to_string()),
+        ..RowView::default()
+    }
+}
+
+#[tokio::test]
+async fn a_filter_narrows_the_rows_and_still_pages() {
+    let d = driver_or_skip!();
+    let few = d
+        .table_rows("shop", "events", 0, 100, &filtered("id > 240"))
+        .await
+        .unwrap();
+    assert_eq!(few.rows.len(), 10);
+    assert!(!few.has_more);
+    assert_eq!(few.rows[0][0].as_deref(), Some("241"));
+
+    // 125 even ids: a full first page, with more behind it.
+    let even = d
+        .table_rows("shop", "events", 0, 100, &filtered("id % 2 = 0"))
+        .await
+        .unwrap();
+    assert_eq!(even.rows.len(), 100);
+    assert!(even.has_more);
+    let rest = d
+        .table_rows("shop", "events", 100, 100, &filtered("id % 2 = 0"))
+        .await
+        .unwrap();
+    assert_eq!(rest.rows.len(), 25);
+    assert!(!rest.has_more);
+}
+
+#[tokio::test]
+async fn a_trailing_comment_in_the_filter_cannot_eat_the_rest() {
+    let d = driver_or_skip!();
+    for filter in ["id > 248 -- the last two", "id > 248 # the last two"] {
+        let page = d
+            .table_rows("shop", "events", 0, 100, &filtered(filter))
+            .await
+            .unwrap();
+        assert_eq!(page.rows.len(), 2, "filter: {filter}");
+    }
+}
+
+#[tokio::test]
+async fn a_filter_with_no_matches_still_has_column_names() {
+    let d = driver_or_skip!();
+    let page = d
+        .table_rows("shop", "events", 0, 100, &filtered("id < 0"))
+        .await
+        .unwrap();
+    assert!(page.rows.is_empty());
+    let names: Vec<&str> = page.columns.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, vec!["id", "kind", "payload"]);
+}
+
+#[tokio::test]
+async fn sorting_orders_the_whole_table_and_rejects_unknown_columns() {
+    let d = driver_or_skip!();
+    let view = RowView {
+        sort_column: Some("id".into()),
+        sort_desc: true,
+        ..RowView::default()
+    };
+    let page = d.table_rows("shop", "events", 0, 100, &view).await.unwrap();
+    assert_eq!(page.rows[0][0].as_deref(), Some("250"));
+    assert_eq!(page.rows[1][0].as_deref(), Some("249"));
+
+    let bad = RowView {
+        sort_column: Some("id`; DROP TABLE events; --".into()),
+        ..RowView::default()
+    };
+    let err = d
+        .table_rows("shop", "events", 0, 100, &bad)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, AppError::Sql(_)), "got {err:?}");
+}
+
+#[tokio::test]
+async fn a_filter_cannot_write_or_run_a_second_statement() {
+    let d = driver_or_skip!();
+    for filter in [
+        "1=1; DROP TABLE events",
+        "1=1) ; DELETE FROM events WHERE (1=1",
+        "id = GET_LOCK('fogtrail', 1)",
+        "1=1) INTO OUTFILE '/tmp/fogtrail-test' FROM events WHERE (1=1",
+    ] {
+        let err = d
+            .table_rows("shop", "events", 0, 100, &filtered(filter))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, AppError::Blocked(_)),
+            "filter {filter:?} gave {err:?}"
+        );
+    }
+    // Nothing was touched.
+    let all = d
+        .table_rows("shop", "events", 0, 100, &RowView::default())
+        .await
+        .unwrap();
+    assert_eq!(all.rows.len(), 100);
+    assert!(all.has_more);
+}
+
 #[tokio::test]
 async fn an_empty_page_still_has_column_names() {
     let d = driver_or_skip!();
-    let page = d.table_rows("shop", "events", 10_000, 100).await.unwrap();
+    let page = d
+        .table_rows("shop", "events", 10_000, 100, &RowView::default())
+        .await
+        .unwrap();
     assert!(page.rows.is_empty());
     assert!(!page.has_more);
     let names: Vec<&str> = page.columns.iter().map(|c| c.name.as_str()).collect();
@@ -187,7 +303,10 @@ async fn an_empty_page_still_has_column_names() {
 #[tokio::test]
 async fn null_and_empty_string_stay_different() {
     let d = driver_or_skip!();
-    let page = d.table_rows("shop", "customers", 0, 100).await.unwrap();
+    let page = d
+        .table_rows("shop", "customers", 0, 100, &RowView::default())
+        .await
+        .unwrap();
     let col = |name: &str| page.columns.iter().position(|c| c.name == name).unwrap();
     let (email, notes) = (col("email"), col("notes"));
     // Grace has no notes (NULL); Linus has no email (NULL) and empty notes.
@@ -201,7 +320,10 @@ async fn null_and_empty_string_stay_different() {
 #[tokio::test]
 async fn other_column_types_arrive_readable() {
     let d = driver_or_skip!();
-    let page = d.table_rows("shop", "products", 0, 100).await.unwrap();
+    let page = d
+        .table_rows("shop", "products", 0, 100, &RowView::default())
+        .await
+        .unwrap();
     let col = |name: &str| page.columns.iter().position(|c| c.name == name).unwrap();
     let lamp = &page.rows[page
         .rows
@@ -219,11 +341,17 @@ async fn other_column_types_arrive_readable() {
 #[tokio::test]
 async fn odd_table_names_and_tables_without_a_primary_key_work() {
     let d = driver_or_skip!();
-    let weird = d.table_rows("shop", "weird name", 0, 10).await.unwrap();
+    let weird = d
+        .table_rows("shop", "weird name", 0, 10, &RowView::default())
+        .await
+        .unwrap();
     assert_eq!(weird.columns[0].name, "select");
     assert_eq!(weird.columns[1].name, "back`tick");
     assert_eq!(weird.rows[0][1].as_deref(), Some("2"));
-    let loose = d.table_rows("shop", "loose_notes", 0, 10).await.unwrap();
+    let loose = d
+        .table_rows("shop", "loose_notes", 0, 10, &RowView::default())
+        .await
+        .unwrap();
     assert_eq!(loose.rows.len(), 2);
 }
 
@@ -235,7 +363,10 @@ async fn names_that_are_not_real_tables_never_reach_the_sql() {
         "customers` WHERE 1=1 --",
         "nope",
     ] {
-        let err = d.table_rows("shop", evil, 0, 10).await.unwrap_err();
+        let err = d
+            .table_rows("shop", evil, 0, 10, &RowView::default())
+            .await
+            .unwrap_err();
         assert!(
             matches!(err, AppError::InvalidArgument(_)),
             "{evil}: {err:?}"
@@ -244,7 +375,7 @@ async fn names_that_are_not_real_tables_never_reach_the_sql() {
         assert!(matches!(err, AppError::InvalidArgument(_)));
     }
     assert_eq!(
-        d.table_rows("shop", "customers", 0, 100)
+        d.table_rows("shop", "customers", 0, 100, &RowView::default())
             .await
             .unwrap()
             .rows

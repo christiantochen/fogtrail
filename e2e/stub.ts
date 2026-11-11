@@ -356,37 +356,92 @@ export async function stubBackend(
               const a = args as unknown as {
                 table: string;
                 offset: number;
+                view?: {
+                  filter?: string;
+                  sortColumn?: string;
+                  sortDesc?: boolean;
+                };
               };
               const w = window as unknown as {
                 __rowCalls?: { table: string; offset: number }[];
+                __rowViews?: unknown[];
                 __FAIL_ROWS__?: boolean;
               };
               (w.__rowCalls ??= []).push({ table: a.table, offset: a.offset });
+              (w.__rowViews ??= []).push(a.view ?? {});
               if (w.__FAIL_ROWS__)
                 throw { kind: "sql", message: "SELECT command denied to user" };
-              if (a.table === "orders") {
-                return {
-                  columns: [
-                    { name: "id", typeName: "BIGINT" },
-                    { name: "customer_id", typeName: "BIGINT" },
-                    { name: "status", typeName: "ENUM" },
-                    { name: "total", typeName: "DECIMAL" },
-                    { name: "notes", typeName: "VARCHAR" },
-                  ],
-                  rows: [
-                    ["48213", "9021", "paid", "184.50", null],
-                    [
-                      "48212",
-                      "4417",
-                      "pending",
-                      "62.00",
-                      "Leave at front desk",
-                    ],
-                    ["48211", "7730", "paid", "310.25", ""],
-                  ],
-                  offset: 0,
-                  hasMore: false,
+              const filter = a.view?.filter ?? "";
+              // The backend checks the whole statement; this is the same idea, cut down.
+              if (filter.includes(";"))
+                throw {
+                  kind: "blocked",
+                  message:
+                    "Running more than one statement at once is not allowed. Fogtrail runs SELECT, SHOW, DESCRIBE, EXPLAIN and WITH only. Nothing was sent to the server.",
                 };
+              if (/\bboom\b/.test(filter))
+                throw {
+                  kind: "sql",
+                  message: "Unknown column 'boom' in 'where clause'",
+                };
+              if (a.table === "orders") {
+                const columns = [
+                  { name: "id", typeName: "BIGINT" },
+                  { name: "customer_id", typeName: "BIGINT" },
+                  { name: "status", typeName: "ENUM" },
+                  { name: "total", typeName: "DECIMAL" },
+                  { name: "notes", typeName: "VARCHAR" },
+                  { name: "items", typeName: "JSON" },
+                  { name: "created_at", typeName: "TIMESTAMP" },
+                ];
+                let rows: (string | null)[][] = [
+                  [
+                    "48213",
+                    "9021",
+                    "paid",
+                    "184.50",
+                    null,
+                    '[{"sku":"BK-114","qty":2},{"sku":"BK-207","qty":1}]',
+                    "2026-11-11 09:42:07",
+                  ],
+                  [
+                    "48212",
+                    "4417",
+                    "pending",
+                    "62.00",
+                    "Leave at front desk",
+                    '{"gift":true}',
+                    "2026-11-10 19:27:03",
+                  ],
+                  [
+                    "48211",
+                    "7730",
+                    "paid",
+                    "310.25",
+                    "",
+                    "[]",
+                    "2026-11-09 12:18:42",
+                  ],
+                ];
+                if (/nomatch/.test(filter)) rows = [];
+                else if (/status\s*=\s*'paid'/.test(filter))
+                  rows = rows.filter((r) => r[2] === "paid");
+                const sortAt = columns.findIndex(
+                  (c) => c.name === a.view?.sortColumn,
+                );
+                if (sortAt >= 0) {
+                  const dir = a.view?.sortDesc ? -1 : 1;
+                  rows = [...rows].sort(
+                    (x, y) =>
+                      dir *
+                      String(x[sortAt] ?? "").localeCompare(
+                        String(y[sortAt] ?? ""),
+                        undefined,
+                        { numeric: true },
+                      ),
+                  );
+                }
+                return { columns, rows, offset: 0, hasMore: false };
               }
               // `events` is long enough to page: 250 rows, 100 per page.
               const total = a.table === "events" ? 250 : 0;

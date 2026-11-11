@@ -198,6 +198,14 @@ export interface RowPage {
   hasMore: boolean;
 }
 
+/** How a table's rows are asked for. Both parts are optional. */
+export interface RowView {
+  /** A SQL expression for WHERE. The backend checks the whole statement. */
+  filter?: string;
+  sortColumn?: string;
+  sortDesc?: boolean;
+}
+
 /** What a query from the editor returned. */
 export interface QueryResult {
   columns: ResultColumn[];

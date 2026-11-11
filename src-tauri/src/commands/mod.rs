@@ -3,8 +3,8 @@ use tauri::{AppHandle, State};
 
 use crate::connections::{Connections, TestResult};
 use crate::drivers::{
-    BrowseQuery, ConnectionInfo, Detail, Node, Page, QueryResult, RowPage, SchemaInfo, ServerInfo,
-    StreamPage, TableInfo, TableStructure,
+    BrowseQuery, ConnectionInfo, Detail, Node, Page, QueryResult, RowPage, RowView, SchemaInfo,
+    ServerInfo, StreamPage, TableInfo, TableStructure,
 };
 use crate::error::AppError;
 use crate::profiles::Profile;
@@ -149,10 +149,19 @@ pub async fn table_rows(
     table: String,
     offset: Option<u64>,
     count: Option<u32>,
+    view: Option<RowView>,
 ) -> Result<RowPage, AppError> {
+    let mut view = view.unwrap_or_default();
+    view.filter = view.filter.filter(|f| !f.trim().is_empty());
     conns
         .sql()?
-        .table_rows(&schema, &table, offset.unwrap_or(0), count.unwrap_or(100))
+        .table_rows(
+            &schema,
+            &table,
+            offset.unwrap_or(0),
+            count.unwrap_or(100),
+            &view,
+        )
         .await
 }
 

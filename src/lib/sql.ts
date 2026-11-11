@@ -103,3 +103,52 @@ export function elapsedLabel(ms: number): string {
 export function lineCount(text: string): number {
   return text.split("\n").length;
 }
+
+/** What a click on a column heading does: sort up, then down, then back to the table's order. */
+export function nextSort(
+  current: { column: string; desc: boolean } | null,
+  column: string,
+): { column: string; desc: boolean } | null {
+  if (current?.column !== column) return { column, desc: false };
+  return current.desc ? null : { column, desc: true };
+}
+
+/** "3 items" or "2 keys" for a JSON array or object; null when the text is neither. */
+export function jsonSummary(text: string): string | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+  if (Array.isArray(value)) return plural(value.length, "item");
+  if (value !== null && typeof value === "object")
+    return plural(Object.keys(value).length, "key");
+  return null;
+}
+
+/** JSON laid out over several lines, or null when the text isn't JSON. */
+export function prettyJson(text: string): string | null {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    return null;
+  }
+}
+
+/** A date and a time apart, so the date reads first: "2026-11-11 08:51:20" gives both halves. */
+export function splitTimestamp(text: string): [string, string] | null {
+  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/.exec(text);
+  return m ? [m[1], m[2]] : null;
+}
+
+/** True for a JSON column, however the server spells the type. */
+export function isJsonType(typeName: string): boolean {
+  return typeName.toUpperCase() === "JSON";
+}
+
+/** True for DATETIME, TIMESTAMP and the like. */
+export function isTimeType(typeName: string): boolean {
+  return /^(DATETIME|TIMESTAMP)/i.test(typeName);
+}

@@ -8,6 +8,7 @@ import type {
   Profile,
   QueryResult,
   RowPage,
+  RowView,
   SchemaInfo,
   ServerInfo,
   StreamPage,
@@ -72,8 +73,9 @@ export const tableRows = (
   schema: string,
   table: string,
   offset: number,
+  view?: RowView,
   count?: number,
-) => call<RowPage>("table_rows", { schema, table, offset, count });
+) => call<RowPage>("table_rows", { schema, table, offset, view, count });
 
 /** Runs one read-only statement. `runId` lets `cancelQuery` stop it. */
 export const runQuery = (sql: string, schema: string | null, runId: string) =>

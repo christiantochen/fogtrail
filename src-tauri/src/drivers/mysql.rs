@@ -4,6 +4,7 @@
 //! server side; the README says how to make one.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -18,7 +19,7 @@ use tokio::sync::OnceCell;
 
 use super::{
     ColumnInfo, ConnectionInfo, Driver, ForeignKeyInfo, IndexInfo, Probe, QueryResult,
-    ResultColumn, RowPage, SchemaInfo, SqlDriver, TableInfo, TableStructure,
+    ResultColumn, RowPage, RowView, SchemaInfo, SqlDriver, TableInfo, TableStructure,
 };
 use crate::error::AppError;
 use crate::profiles::Profile;
@@ -342,6 +343,7 @@ impl SqlDriver for MySqlDriver {
         table: &str,
         offset: u64,
         count: u32,
+        view: &RowView,
     ) -> Result<RowPage, AppError> {
         // Checked against the server's own list, so only real names are ever quoted into SQL.
         self.kind_of(schema, table).await?;
@@ -359,6 +361,13 @@ impl SqlDriver for MySqlDriver {
         .await
         .map_err(|e| self.err(e))?;
         let pk: Vec<String> = pk.iter().filter_map(|r| text(r, 0)).collect();
+        if view.filter.as_deref().is_some_and(|f| !f.trim().is_empty())
+            || view.sort_column.is_some()
+        {
+            return self
+                .view_rows(schema, table, &pk, offset, count, view)
+                .await;
+        }
         let sql = page_sql(schema, table, &pk, offset, count);
         // `raw_sql` uses the text protocol, so every value arrives as text.
         let rows = sqlx::raw_sql(&sql)
@@ -499,6 +508,49 @@ impl MySqlDriver {
         self.err(e)
     }
 
+    /// A page of rows with a filter or a sort. It goes through `run_query`, so the
+    /// whole statement is checked by `sql_guard` and the row cap, the time limit and
+    /// the read-only session all apply, whatever the filter text says.
+    async fn view_rows(
+        &self,
+        schema: &str,
+        table: &str,
+        pk: &[String],
+        offset: u64,
+        count: u32,
+        view: &RowView,
+    ) -> Result<RowPage, AppError> {
+        // A sort column must be a real column, so only real names are ever quoted.
+        let sort = match view.sort_column.as_deref() {
+            None => None,
+            Some(name) => {
+                let known = self.column_names(schema, table).await?;
+                if !known.iter().any(|c| c.name == name) {
+                    return Err(AppError::Sql(format!("Unknown column '{name}'")));
+                }
+                Some((name, view.sort_desc))
+            }
+        };
+        let filter = view
+            .filter
+            .as_deref()
+            .map(str::trim)
+            .filter(|f| !f.is_empty());
+        let sql = view_sql(schema, table, pk, offset, count, filter, sort);
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let run_id = format!("rows-{}", NEXT.fetch_add(1, Ordering::Relaxed));
+        let result = self.run_query(&sql, None, &run_id).await?;
+        let has_more = result.rows.len() > count as usize;
+        let mut rows = result.rows;
+        rows.truncate(count as usize);
+        Ok(RowPage {
+            columns: result.columns,
+            rows,
+            offset,
+            has_more,
+        })
+    }
+
     async fn column_names(&self, schema: &str, table: &str) -> Result<Vec<ResultColumn>, AppError> {
         let pool = self.pool().await?;
         let rows = sqlx::query(
@@ -620,6 +672,46 @@ fn page_sql(schema: &str, table: &str, pk: &[String], offset: u64, count: u32) -
     // One extra row tells us whether there is another page.
     format!(
         "SELECT * FROM {}.{}{order} LIMIT {} OFFSET {offset}",
+        quote_ident(schema),
+        quote_ident(table),
+        count + 1
+    )
+}
+
+/// The statement for a filtered or sorted page. The filter sits on its own lines
+/// inside the parentheses, so a `--` or `#` comment at its end can't swallow the
+/// closing one. `sql_guard` checks the finished statement before it is sent.
+fn view_sql(
+    schema: &str,
+    table: &str,
+    pk: &[String],
+    offset: u64,
+    count: u32,
+    filter: Option<&str>,
+    sort: Option<(&str, bool)>,
+) -> String {
+    let wher = filter.map_or(String::new(), |f| format!(" WHERE (\n{f}\n)"));
+    let mut order: Vec<String> = Vec::new();
+    if let Some((column, desc)) = sort {
+        order.push(format!(
+            "{}{}",
+            quote_ident(column),
+            if desc { " DESC" } else { "" }
+        ));
+    }
+    // The primary key breaks ties, so pages line up.
+    order.extend(
+        pk.iter()
+            .filter(|c| sort.is_none_or(|(s, _)| s != c.as_str()))
+            .map(|c| quote_ident(c)),
+    );
+    let order = if order.is_empty() {
+        String::new()
+    } else {
+        format!(" ORDER BY {}", order.join(", "))
+    };
+    format!(
+        "SELECT * FROM {}.{}{wher}{order} LIMIT {} OFFSET {offset}",
         quote_ident(schema),
         quote_ident(table),
         count + 1
@@ -779,6 +871,27 @@ mod tests {
         let sql = page_sql("s", "t", &["a".into(), "b".into()], 0, 10);
         assert!(sql.contains("ORDER BY `a`, `b` LIMIT 11 OFFSET 0"));
         assert!(!page_sql("s", "t", &[], 0, 10).contains("ORDER BY"));
+    }
+
+    #[test]
+    fn a_filtered_page_keeps_the_filter_inside_its_own_parentheses() {
+        let sql = view_sql(
+            "shop",
+            "orders",
+            &["id".into()],
+            0,
+            100,
+            Some("status = 'paid' -- only paid"),
+            Some(("total", true)),
+        );
+        assert_eq!(
+            sql,
+            "SELECT * FROM `shop`.`orders` WHERE (\nstatus = 'paid' -- only paid\n) \
+             ORDER BY `total` DESC, `id` LIMIT 101 OFFSET 0"
+        );
+        // Sorting by the primary key does not list it twice.
+        let sql = view_sql("s", "t", &["id".into()], 5, 10, None, Some(("id", false)));
+        assert_eq!(sql, "SELECT * FROM `s`.`t` ORDER BY `id` LIMIT 11 OFFSET 5");
     }
 
     #[test]
