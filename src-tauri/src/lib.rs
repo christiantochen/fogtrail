@@ -74,6 +74,7 @@ pub fn run() {
             commands::table_rows,
             commands::run_query,
             commands::cancel_query,
+            menu::set_theme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
