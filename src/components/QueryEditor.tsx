@@ -6,11 +6,17 @@ import { copyText } from "../lib/clipboard";
 import {
   elapsedLabel,
   isNumericType,
+  livePins,
+  MAX_PINS,
+  pinOrder,
   resultToTsv,
   rowCountLabel,
+  toggleColumnPin,
 } from "../lib/sql";
 import { useUi } from "../state/ui";
 import { Lock } from "./Icons";
+import { PinButton } from "./PinButton";
+import { useColumnPins } from "./useColumnPins";
 import { SqlInput } from "./SqlInput";
 
 /** What the last run came to. */
@@ -215,49 +221,90 @@ export function QueryEditor({ schema }: { schema: string | null }) {
 
 function Grid({ result }: { result: QueryResult }) {
   const { columns, rows } = result;
+  const [pinned, setPinned] = useState<string[]>([]);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const names = columns.map((c) => c.name);
+  const live = livePins(names, pinned);
+  const order = pinOrder(names, pinned);
+  const lefts = useColumnPins(tableRef, live, result);
+  const pinOf = (name: string) =>
+    name in lefts
+      ? { left: lefts[name], last: name === live[live.length - 1] }
+      : undefined;
+  const stick = (i: number, base?: string) => {
+    const pin = pinOf(columns[i]?.name ?? "");
+    const cls = [base, pin ? "pinned" : "", pin?.last ? "pinned--last" : ""]
+      .filter(Boolean)
+      .join(" ");
+    return {
+      className: cls || undefined,
+      style: pin ? { left: pin.left } : undefined,
+    };
+  };
   return (
     <>
       <div className="table-wrap sqlwrap">
         {columns.length > 0 && (
-          <table className="sqlgrid" aria-label="Query results">
+          <table ref={tableRef} className="sqlgrid" aria-label="Query results">
             <thead>
               <tr>
-                {columns.map((c, i) => (
-                  <th
-                    key={i}
-                    className={isNumericType(c.typeName) ? "num" : undefined}
-                  >
-                    <span className="sqlgrid__name">{c.name}</span>
-                    <span className="sqlgrid__sub mono">
-                      {c.typeName.toLowerCase()}
-                    </span>
-                  </th>
-                ))}
+                {order.map((i) => {
+                  const c = columns[i];
+                  return (
+                    <th
+                      key={i}
+                      data-col={c.name}
+                      {...stick(
+                        i,
+                        isNumericType(c.typeName) ? "num" : undefined,
+                      )}
+                    >
+                      <div className="colhead">
+                        <div>
+                          <span className="sqlgrid__name">{c.name}</span>
+                          <span className="sqlgrid__sub mono">
+                            {c.typeName.toLowerCase()}
+                          </span>
+                        </div>
+                        <PinButton
+                          name={c.name}
+                          pinned={live.includes(c.name)}
+                          full={live.length >= MAX_PINS}
+                          onToggle={() =>
+                            setPinned((p) => toggleColumnPin(p, c.name))
+                          }
+                        />
+                      </div>
+                    </th>
+                  );
+                })}
                 <th className="sqlgrid__fill" aria-hidden="true" />
               </tr>
             </thead>
             <tbody>
               {rows.map((row, r) => (
                 <tr key={r}>
-                  {row.map((cell, i) =>
-                    cell === null ? (
-                      <td key={i} className="sqlgrid__null">
+                  {order.map((i) => {
+                    const cell = row[i];
+                    return cell === null ? (
+                      <td key={i} {...stick(i, "sqlgrid__null")}>
                         NULL
                       </td>
                     ) : (
                       <td
                         key={i}
-                        className={
+                        {...stick(
+                          i,
                           isNumericType(columns[i]?.typeName ?? "")
                             ? "num"
-                            : undefined
-                        }
+                            : undefined,
+                        )}
                         title={cell}
                       >
                         {cell}
                       </td>
-                    ),
-                  )}
+                    );
+                  })}
                   <td className="sqlgrid__fill" aria-hidden="true" />
                 </tr>
               ))}

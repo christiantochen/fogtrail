@@ -1718,9 +1718,10 @@ select option {
 .sqlgrid th {
   position: sticky;
   top: 0;
+  z-index: 2;
   padding: 6px 12px;
-  background: var(--card);
-  border-bottom: 1px solid var(--border-soft);
+  background: var(--chip);
+  border-bottom: 1px solid var(--border);
   text-align: left;
   vertical-align: bottom;
   white-space: nowrap;
@@ -1728,14 +1729,14 @@ select option {
 .sqlgrid__name {
   display: block;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--ink);
 }
 .sqlgrid__sub {
   display: block;
   font-size: 10.5px;
   font-weight: 400;
-  color: var(--muted);
+  color: var(--chip-ink);
 }
 .sqlgrid td {
   font-variant-numeric: tabular-nums;
@@ -2354,4 +2355,68 @@ select option {
 .rowpanel__json .code {
   margin: 0;
   padding: 8px 16px 16px;
+}
+
+/* Pinned columns stay at the left while the table scrolls sideways. */
+.colhead {
+  display: block;
+}
+.pinbtn {
+  position: absolute;
+  top: 5px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+}
+.num .pinbtn {
+  right: auto;
+  left: 4px;
+}
+.sqlgrid th.pinned.num {
+  padding-right: 12px;
+  padding-left: 30px;
+}
+.sqlgrid th:hover .pinbtn,
+.pinbtn:focus-visible,
+.pinbtn--on {
+  opacity: 1;
+}
+.pinbtn--on {
+  color: var(--amber);
+}
+.pinbtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.sqlgrid td.pinned {
+  position: sticky;
+  z-index: 1;
+  background: var(--card);
+}
+.sqlgrid th.pinned {
+  z-index: 4;
+  padding-right: 30px;
+}
+.sqlrow:hover td.pinned {
+  background: linear-gradient(var(--hover), var(--hover)) var(--card);
+}
+.sqlrow--open td.pinned {
+  background: var(--selected);
+}
+.sqlgrid .pinned--last {
+  box-shadow: 6px 0 8px -6px rgb(0 0 0 / 35%);
+}
+.sqlfoot__note {
+  margin-left: 12px;
+  color: var(--muted);
 }
