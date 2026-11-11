@@ -171,3 +171,28 @@ export function isJsonType(typeName: string): boolean {
 export function isTimeType(typeName: string): boolean {
   return /^(DATETIME|TIMESTAMP)/i.test(typeName);
 }
+
+/** The most columns that can be pinned, so there is always room left to scroll. */
+export const MAX_PINS = 3;
+
+/** Pinned names that are columns of this result, in the order they were pinned. */
+export function livePins(names: string[], pinned: string[]): string[] {
+  return pinned.filter((p) => names.includes(p));
+}
+
+/** Column positions with the pinned ones first, in pin order, then the rest as they were. */
+export function pinOrder(names: string[], pinned: string[]): number[] {
+  const first = livePins(names, pinned).map((p) => names.indexOf(p));
+  const rest = names.map((_, i) => i).filter((i) => !first.includes(i));
+  return [...first, ...rest];
+}
+
+/** Pin or unpin a column. Pinning past the limit changes nothing. */
+export function toggleColumnPin(
+  pinned: string[],
+  name: string,
+  max = MAX_PINS,
+): string[] {
+  if (pinned.includes(name)) return pinned.filter((p) => p !== name);
+  return pinned.length >= max ? pinned : [...pinned, name];
+}

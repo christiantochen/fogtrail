@@ -56,15 +56,15 @@ test.describe("the table's data view", () => {
         .allTextContents();
     await expect(await ids()).toEqual(["48213", "48212", "48211"]);
 
-    await total.getByRole("button").click();
+    await total.getByRole("button", { name: /^total/ }).click();
     await expect(total).toHaveAttribute("aria-sort", "ascending");
     await expect.poll(ids).toEqual(["48212", "48213", "48211"]);
 
-    await total.getByRole("button").click();
+    await total.getByRole("button", { name: /^total/ }).click();
     await expect(total).toHaveAttribute("aria-sort", "descending");
     await expect.poll(ids).toEqual(["48211", "48213", "48212"]);
 
-    await total.getByRole("button").click();
+    await total.getByRole("button", { name: /^total/ }).click();
     await expect(total).not.toHaveAttribute("aria-sort", /.+/);
     await expect.poll(ids).toEqual(["48213", "48212", "48211"]);
 
@@ -342,5 +342,113 @@ test.describe("a table with few columns", () => {
     const row = await grid.locator("tbody tr").first().boundingBox();
     expect(id!.width).toBeLessThan(160);
     expect(row!.width).toBeGreaterThan(wrap!.width - 20);
+  });
+
+  test.describe("pinned columns", () => {
+    const head = (page: Page, name: string) =>
+      page
+        .getByRole("table", { name: "Rows of orders" })
+        .locator(`thead th[data-col="${name}"]`);
+    const pin = (page: Page, name: string, on = true) =>
+      head(page, name)
+        .getByRole("button", { name: `${on ? "Pin" : "Unpin"} ${name}` })
+        .click({ force: true });
+
+    test("pinning moves a column first, and unpinning puts it back", async ({
+      page,
+    }) => {
+      await openOrders(page);
+      await pin(page, "status");
+      const heads = page
+        .getByRole("table", { name: "Rows of orders" })
+        .locator("thead th[data-col]");
+      await expect(heads.first()).toHaveAttribute("data-col", "status");
+      await expect(head(page, "status")).toHaveClass(/pinned/);
+      await pin(page, "status", false);
+      await expect(heads.first()).toHaveAttribute("data-col", "id");
+    });
+
+    test("a pinned column stays put when the table scrolls sideways", async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 700, height: 700 });
+      await openOrders(page);
+      await pin(page, "id");
+      const wrap = page.locator(".sqlwrap");
+      const cell = page
+        .getByRole("table", { name: "Rows of orders" })
+        .locator("tbody tr")
+        .first()
+        .locator("td")
+        .first();
+      const before = await cell.boundingBox();
+      await wrap.evaluate((el) => (el.scrollLeft = 400));
+      const after = await cell.boundingBox();
+      expect(Math.abs(after!.x - before!.x)).toBeLessThan(2);
+    });
+
+    test("at most three can be pinned", async ({ page }) => {
+      await openOrders(page);
+      for (const c of ["id", "status", "total"]) await pin(page, c);
+      await expect(
+        page.getByText("3 of 3 columns pinned. Unpin one to pin another."),
+      ).toBeVisible();
+      await expect(
+        head(page, "customer_id").getByRole("button", {
+          name: "Pin customer_id",
+        }),
+      ).toBeDisabled();
+    });
+
+    test("pins reset when another table opens", async ({ page }) => {
+      await openOrders(page);
+      await pin(page, "status");
+      await page
+        .getByRole("list", { name: "Tables" })
+        .getByRole("button", { name: /^customers/ })
+        .click();
+      await page.getByRole("table", { name: "Rows of customers" }).waitFor();
+      await expect(page.locator("th.pinned")).toHaveCount(0);
+    });
+
+    test("query results can be pinned too", async ({ page }) => {
+      await stubBackend(page, [], { mysql: true });
+      await page.goto("/");
+      await page
+        .locator(".card")
+        .filter({ hasText: "shop-prod" })
+        .getByRole("button", { name: "Connect", exact: true })
+        .click();
+      await page.getByRole("list", { name: "Tables" }).waitFor();
+      await page.getByRole("button", { name: "Query editor" }).click();
+      await page
+        .getByLabel("SQL", { exact: true })
+        .fill("SELECT * FROM orders");
+      await page.getByRole("button", { name: "Run", exact: true }).click();
+      const grid = page.getByRole("table", { name: "Query results" });
+      await grid.waitFor();
+      await grid
+        .locator('thead th[data-col="status"]')
+        .getByRole("button", { name: "Pin status" })
+        .click({ force: true });
+      await expect(grid.locator("thead th[data-col]").first()).toHaveAttribute(
+        "data-col",
+        "status",
+      );
+    });
+
+    test("the header band is a different shade from the rows", async ({
+      page,
+    }) => {
+      await openOrders(page);
+      const bg = (sel: string) =>
+        page
+          .locator(sel)
+          .first()
+          .evaluate((el) => getComputedStyle(el).backgroundColor);
+      const th = await bg(".sqlgrid thead th");
+      const td = await bg(".sqlgrid tbody td");
+      expect(th).not.toBe(td);
+    });
   });
 });

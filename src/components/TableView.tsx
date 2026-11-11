@@ -21,10 +21,15 @@ import {
   rangeLabel,
   resultToTsv,
   splitTimestamp,
+  MAX_PINS,
+  livePins,
+  pinOrder,
 } from "../lib/sql";
 import { useUi } from "../state/ui";
 import { FilterBar } from "./FilterBar";
 import { Lock, Refresh } from "./Icons";
+import { PinButton } from "./PinButton";
+import { useColumnPins } from "./useColumnPins";
 import { RowPanel } from "./RowPanel";
 
 /** One table or view: its rows and its structure. */
@@ -249,6 +254,17 @@ function DataGrid({
   onOffset: (offset: number) => void;
 }) {
   const [open, setOpen] = useState<number | null>(null);
+  const pinned = useUi((s) => s.sqlPinned);
+  const togglePinned = useUi((s) => s.togglePinnedColumn);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const names = page.columns.map((c) => c.name);
+  const live = livePins(names, pinned);
+  const order = pinOrder(names, pinned);
+  const lefts = useColumnPins(tableRef, live, page);
+  const pinOf = (name: string) =>
+    name in lefts
+      ? { left: lefts[name], last: name === live[live.length - 1] }
+      : undefined;
   const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
   const move = (delta: number) =>
     setOpen((i) =>
@@ -259,16 +275,33 @@ function DataGrid({
     <div className="sqldata">
       <div className="sqldata__main">
         <div className="table-wrap sqlwrap">
-          <table className="sqlgrid" aria-label={`Rows of ${table}`}>
+          <table
+            ref={tableRef}
+            className="sqlgrid"
+            aria-label={`Rows of ${table}`}
+          >
             <thead>
               <tr>
-                {page.columns.map((c) => {
+                {order.map((ci) => {
+                  const c = page.columns[ci];
                   const numeric = isNumericType(c.typeName);
                   const active = sort?.column === c.name ? sort : null;
+                  const pin = pinOf(c.name);
+                  const isPinned = live.includes(c.name);
                   return (
                     <th
                       key={c.name}
-                      className={numeric ? "num" : undefined}
+                      data-col={c.name}
+                      className={
+                        [
+                          numeric ? "num" : "",
+                          isPinned ? "pinned" : "",
+                          pin?.last ? "pinned--last" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ") || undefined
+                      }
+                      style={pin ? { left: pin.left } : undefined}
                       aria-sort={
                         active
                           ? active.desc
@@ -277,27 +310,35 @@ function DataGrid({
                           : undefined
                       }
                     >
-                      <button
-                        type="button"
-                        className={`sorthead${active ? " sorthead--on" : ""}`}
-                        title="Sort by this column"
-                        onClick={() => onSort(nextSort(sort, c.name))}
-                      >
-                        <span className="sqlgrid__name">
-                          {c.name}
-                          {active && (
-                            <span
-                              className="sorthead__arrow"
-                              aria-hidden="true"
-                            >
-                              {active.desc ? "↓" : "↑"}
-                            </span>
-                          )}
-                        </span>
-                        <span className="sqlgrid__sub mono">
-                          {columnSub(c, info.get(c.name))}
-                        </span>
-                      </button>
+                      <div className="colhead">
+                        <button
+                          type="button"
+                          className={`sorthead${active ? " sorthead--on" : ""}`}
+                          title="Sort by this column"
+                          onClick={() => onSort(nextSort(sort, c.name))}
+                        >
+                          <span className="sqlgrid__name">
+                            {c.name}
+                            {active && (
+                              <span
+                                className="sorthead__arrow"
+                                aria-hidden="true"
+                              >
+                                {active.desc ? "↓" : "↑"}
+                              </span>
+                            )}
+                          </span>
+                          <span className="sqlgrid__sub mono">
+                            {columnSub(c, info.get(c.name))}
+                          </span>
+                        </button>
+                        <PinButton
+                          name={c.name}
+                          pinned={isPinned}
+                          full={live.length >= MAX_PINS}
+                          onToggle={() => togglePinned(c.name)}
+                        />
+                      </div>
                     </th>
                   );
                 })}
@@ -327,11 +368,12 @@ function DataGrid({
                     }
                   }}
                 >
-                  {row.map((cell, i) => (
+                  {order.map((i) => (
                     <Cell
                       key={i}
-                      value={cell}
+                      value={row[i]}
                       type={page.columns[i].typeName}
+                      pin={pinOf(page.columns[i].name)}
                     />
                   ))}
                   <td className="sqlgrid__fill" aria-hidden="true" />
@@ -354,6 +396,11 @@ function DataGrid({
             {filtered ? "Filtered · " : ""}
             {rangeLabel(page.offset, page.rows.length)}
           </span>
+          {live.length >= MAX_PINS && (
+            <span className="sqlfoot__note">
+              {MAX_PINS} of {MAX_PINS} columns pinned. Unpin one to pin another.
+            </span>
+          )}
           <span className="sqlfoot__spacer" />
           <button
             type="button"
@@ -403,14 +450,35 @@ function DataGrid({
 }
 
 /** One cell: NULL apart from empty text, JSON as a small chip, a timestamp with a quiet time. */
-function Cell({ value, type }: { value: string | null; type: string }) {
-  if (value === null) return <td className="sqlgrid__null">NULL</td>;
+function Cell({
+  value,
+  type,
+  pin,
+}: {
+  value: string | null;
+  type: string;
+  pin?: { left: number; last: boolean };
+}) {
+  const stick = pin
+    ? {
+        style: { left: pin.left },
+        pinned: `pinned${pin.last ? " pinned--last" : ""}`,
+      }
+    : null;
+  const cls = (...c: (string | undefined)[]) =>
+    [...c, stick?.pinned].filter(Boolean).join(" ") || undefined;
+  if (value === null)
+    return (
+      <td className={cls("sqlgrid__null")} style={stick?.style}>
+        NULL
+      </td>
+    );
   const numeric = isNumericType(type);
   if (isJsonType(type)) {
     const summary = jsonSummary(value);
     if (summary)
       return (
-        <td title={value}>
+        <td className={cls()} style={stick?.style} title={value}>
           <span className="jchip mono">
             {"{ }"} {summary}
           </span>
@@ -421,13 +489,17 @@ function Cell({ value, type }: { value: string | null; type: string }) {
     const parts = splitTimestamp(value);
     if (parts)
       return (
-        <td title={value}>
+        <td className={cls()} style={stick?.style} title={value}>
           {parts[0]} <span className="sqlgrid__time">{parts[1]}</span>
         </td>
       );
   }
   return (
-    <td className={numeric ? "num" : undefined} title={value}>
+    <td
+      className={cls(numeric ? "num" : undefined)}
+      style={stick?.style}
+      title={value}
+    >
       {value}
     </td>
   );

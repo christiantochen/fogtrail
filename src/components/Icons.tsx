@@ -72,3 +72,10 @@ export const DatabaseIcon = (p: SVGProps<SVGSVGElement>) => (
     <path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
   </svg>
 );
+
+export const Pin = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} strokeWidth={1.8} {...p}>
+    <path d="M12 17v5" />
+    <path d="M9 3h6l-1 6 3 4H7l3-4z" />
+  </svg>
+);

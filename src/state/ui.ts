@@ -4,6 +4,7 @@ import { loadRefresh, saveRefresh } from "../lib/refresh";
 import { loadPins, savePins, togglePin } from "../lib/pins";
 import { loadRecent, pushRecent, saveRecent } from "../lib/recent";
 import { loadSession, type Session } from "../lib/session";
+import { toggleColumnPin } from "../lib/sql";
 import type { SortMode } from "../lib/keysort";
 import { ancestorsOf } from "../lib/tree";
 
@@ -54,6 +55,8 @@ interface UiState {
   sqlFilter: string;
   /** The column the rows are sorted by, or null for the table's own order. */
   sqlSort: { column: string; desc: boolean } | null;
+  /** Columns pinned to the left of the open table, in the order they were pinned. */
+  sqlPinned: string[];
   /** The query editor is open in place of a table. */
   sqlQueryOpen: boolean;
   /** What is typed in the editor. Kept while you look at tables and come back. */
@@ -67,6 +70,7 @@ interface UiState {
   /** Changing the filter or the sort goes back to the first page. */
   setSqlFilter: (filter: string) => void;
   setSqlSort: (sort: { column: string; desc: boolean } | null) => void;
+  togglePinnedColumn: (column: string) => void;
   /** Only keys of this type (a SCAN TYPE), or null for all. Not remembered. */
   kindFilter: string | null;
   setKindFilter: (kind: string | null) => void;
@@ -179,6 +183,7 @@ export const useUi = create<UiState>((set) => ({
   sqlOffset: 0,
   sqlFilter: "",
   sqlSort: null,
+  sqlPinned: [],
   sqlQueryOpen: false,
   sqlText: "",
   openQueryEditor: () => set({ sqlQueryOpen: true }),
@@ -192,6 +197,7 @@ export const useUi = create<UiState>((set) => ({
       sqlOffset: 0,
       sqlFilter: "",
       sqlSort: null,
+      sqlPinned: [],
     }),
   // Picking a table, or going back up to the database, leaves the editor.
   selectTable: (sqlTable) =>
@@ -201,12 +207,15 @@ export const useUi = create<UiState>((set) => ({
       sqlOffset: 0,
       sqlFilter: "",
       sqlSort: null,
+      sqlPinned: [],
       sqlQueryOpen: false,
     }),
   setSqlTab: (sqlTab) => set({ sqlTab }),
   setSqlOffset: (sqlOffset) => set({ sqlOffset: Math.max(0, sqlOffset) }),
   setSqlFilter: (sqlFilter) => set({ sqlFilter, sqlOffset: 0 }),
   setSqlSort: (sqlSort) => set({ sqlSort, sqlOffset: 0 }),
+  togglePinnedColumn: (column) =>
+    set((s) => ({ sqlPinned: toggleColumnPin(s.sqlPinned, column) })),
   kindFilter: null,
   setKindFilter: (kindFilter) => set({ kindFilter }),
   sort: "name",
@@ -232,6 +241,7 @@ export const useUi = create<UiState>((set) => ({
         sqlOffset: 0,
         sqlFilter: "",
         sqlSort: null,
+        sqlPinned: [],
         sqlQueryOpen: false,
         sqlText: "",
         kindFilter: null,

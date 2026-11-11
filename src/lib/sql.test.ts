@@ -11,13 +11,16 @@ import {
   isTimeType,
   jsonSummary,
   lineCount,
+  livePins,
   nextSort,
+  pinOrder,
   pickSchema,
   prettyJson,
   rangeLabel,
   resultToTsv,
   rowCountLabel,
   splitTimestamp,
+  toggleColumnPin,
   visibleSchemas,
 } from "./sql";
 
@@ -251,5 +254,30 @@ describe("table data helpers", () => {
     expect(isTimeType("TIMESTAMP")).toBe(true);
     expect(isTimeType("DATETIME")).toBe(true);
     expect(isTimeType("DATE")).toBe(false);
+  });
+});
+
+describe("pinned columns", () => {
+  const names = ["id", "name", "region", "plan"];
+
+  it("puts pinned columns first, in pin order, and leaves the rest alone", () => {
+    expect(pinOrder(names, [])).toEqual([0, 1, 2, 3]);
+    expect(pinOrder(names, ["id"])).toEqual([0, 1, 2, 3]);
+    expect(pinOrder(names, ["plan"])).toEqual([3, 0, 1, 2]);
+    expect(pinOrder(names, ["plan", "name"])).toEqual([3, 1, 0, 2]);
+  });
+
+  it("ignores a pin for a column that is not there", () => {
+    expect(livePins(names, ["gone", "name"])).toEqual(["name"]);
+    expect(pinOrder(names, ["gone"])).toEqual([0, 1, 2, 3]);
+  });
+
+  it("pins, unpins, and stops at the limit", () => {
+    expect(toggleColumnPin([], "id")).toEqual(["id"]);
+    expect(toggleColumnPin(["id"], "name")).toEqual(["id", "name"]);
+    expect(toggleColumnPin(["id", "name"], "id")).toEqual(["name"]);
+    const full = ["a", "b", "c"];
+    expect(toggleColumnPin(full, "d")).toBe(full);
+    expect(toggleColumnPin(full, "b")).toEqual(["a", "c"]);
   });
 });
