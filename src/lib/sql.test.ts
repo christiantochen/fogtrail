@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ColumnInfo, SchemaInfo, TableInfo } from "../api/types";
 import {
+  approxCompact,
   approxRows,
   columnSub,
   elapsedLabel,
@@ -34,6 +35,32 @@ describe("approxRows", () => {
   });
   it("is blank when the server gave no estimate", () => {
     expect(approxRows(null)).toBe("");
+  });
+});
+
+describe("approxCompact", () => {
+  it("leaves small numbers alone", () => {
+    expect(approxCompact(0)).toBe("~0");
+    expect(approxCompact(978)).toBe("~978");
+    expect(approxCompact(999)).toBe("~999");
+  });
+  it("rounds thousands and millions, with one decimal under ten", () => {
+    expect(approxCompact(1000)).toBe("~1k");
+    expect(approxCompact(1219)).toBe("~1.2k");
+    expect(approxCompact(9949)).toBe("~9.9k");
+    expect(approxCompact(9950)).toBe("~10k");
+    expect(approxCompact(48445)).toBe("~48k");
+    expect(approxCompact(401353)).toBe("~401k");
+    expect(approxCompact(7681394)).toBe("~7.7m");
+    expect(approxCompact(12_400_000)).toBe("~12m");
+  });
+  it("carries into the next unit instead of showing 1000k", () => {
+    expect(approxCompact(999_499)).toBe("~999k");
+    expect(approxCompact(999_500)).toBe("~1m");
+    expect(approxCompact(3_400_000_000)).toBe("~3.4b");
+  });
+  it("is blank when the server gave no estimate", () => {
+    expect(approxCompact(null)).toBe("");
   });
 });
 

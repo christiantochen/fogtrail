@@ -4,6 +4,7 @@ import { useProfiles, useSchemas, useTables } from "../api/queries";
 import { copyText } from "../lib/clipboard";
 import { refreshAll } from "../lib/refreshAll";
 import {
+  approxCompact,
   approxRows,
   filterTables,
   pickSchema,
@@ -258,10 +259,10 @@ export function SqlSidebar() {
                   title={
                     t.estimatedRows === null
                       ? undefined
-                      : "An estimate from the server, not an exact count"
+                      : `${approxRows(t.estimatedRows)} rows. An estimate from the server, not an exact count`
                   }
                 >
-                  {approxRows(t.estimatedRows)}
+                  {approxCompact(t.estimatedRows)}
                 </span>
               </button>
             </li>
