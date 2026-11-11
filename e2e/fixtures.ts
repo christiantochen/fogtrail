@@ -13,20 +13,16 @@ export const test = base.extend<{ layoutGuard: void }>({
         const w = window as unknown as { __layoutViolations: string[] };
         w.__layoutViolations = [];
         let firstTop: number | null = null;
-        let lastBar: number | null = null;
         const check = () => {
           const app = document.querySelector(".app");
           if (app) {
             const r = app.getBoundingClientRect();
             const de = document.documentElement;
             // The app starts right under the title bar (Windows) or at the top,
-            // and must never move from where it first appeared, unless the bar
-            // itself comes or goes (it hides in full screen).
+            // and must never move from where it first appeared.
             const barHeight =
               document.querySelector(".titlebar")?.getBoundingClientRect()
                 .height ?? 0;
-            if (barHeight !== lastBar) firstTop = null;
-            lastBar = barHeight;
             firstTop ??= r.top;
             const problem =
               r.top !== barHeight || r.top !== firstTop || r.left !== 0

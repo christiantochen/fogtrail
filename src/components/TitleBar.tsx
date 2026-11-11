@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { flushSync } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProfiles } from "../api/queries";
 import {
@@ -11,12 +10,7 @@ import {
 } from "../lib/appMenu";
 import { runMenuAction } from "../lib/menu";
 import { menuHandlers } from "../lib/menuHandlers";
-import {
-  isFullscreen,
-  isMaximized,
-  onResized,
-  windowAction,
-} from "../lib/windowApi";
+import { isMaximized, onResized, windowAction } from "../lib/windowApi";
 import { useUi } from "../state/ui";
 import { Mark } from "./Icons";
 
@@ -38,7 +32,6 @@ function Bar() {
   const [open, setOpen] = useState<number | null>(null);
   const [active, setActive] = useState(0);
   const [maximized, setMaximized] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
   const drop = useRef<HTMLDivElement>(null);
   const before = useRef<Element | null>(null);
 
@@ -54,18 +47,13 @@ function Bar() {
   const profiles = useProfiles();
   const name = profiles.data?.find((p) => p.id === connectedId)?.name;
 
-  const sync = () => {
-    void isMaximized().then(setMaximized);
-    void isFullscreen().then(setFullscreen);
-  };
+  const sync = () => void isMaximized().then(setMaximized);
   useEffect(() => {
     sync();
     return onResized(sync);
   }, []);
 
   const run = (id: string) => {
-    // Hide or show the bar before the window resizes, so the page moves once.
-    if (id === "win:fullscreen") flushSync(() => setFullscreen(!fullscreen));
     if (id.startsWith("win:")) void windowAction(id).then(sync);
     else if (id.startsWith("edit:")) runEdit(id.slice(5));
     else runMenuAction(id, handlers);
@@ -93,8 +81,7 @@ function Bar() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const m = mnemonicIndex(e);
-      // In full screen the bar is hidden, so there is no menu to open.
-      if (m >= 0 && !fullscreen) {
+      if (m >= 0) {
         e.preventDefault();
         show(m, true);
         return;
@@ -154,8 +141,8 @@ function Bar() {
     : "Search keys and connections";
 
   return (
-    // Hidden, not removed, in full screen: its shortcuts (F11 to leave) still work.
-    <header className="titlebar" hidden={fullscreen} data-tauri-drag-region>
+    // Stays in full screen, like VS Code's, so the page doesn't move.
+    <header className="titlebar" data-tauri-drag-region>
       <span className="titlebar__mark" data-tauri-drag-region>
         <Mark aria-hidden />
       </span>

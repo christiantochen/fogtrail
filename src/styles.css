@@ -1282,9 +1282,6 @@ tr.row--fresh td {
   background: var(--sidebar);
   user-select: none;
 }
-.titlebar[hidden] {
-  display: none;
-}
 .titlebar__mark {
   display: inline-flex;
   padding: 0 6px 0 12px;

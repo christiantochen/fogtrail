@@ -1,88 +1,67 @@
-//! Full screen in one step. Windows keeps a maximized frameless window above the
-//! taskbar even in full screen, so a maximized window is restored first and
-//! maximized again on the way out. Doing that from the UI played the restore and
-//! maximize animations in between, so the backend does it with them turned off.
+//! Full screen without a flash. The window library keeps a maximized frameless
+//! window above the taskbar (it trims the window in WM_NCCALCSIZE), even in full
+//! screen. Restoring the window first made it flash small, then big. Instead, a
+//! handler of ours sees WM_NCCALCSIZE first and, only while in full screen, keeps
+//! the whole screen. The window changes size once, like VS Code's.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::WebviewWindow;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Step {
-    Unmaximize,
-    Fullscreen(bool),
-    Maximize,
+/// True while the window is in full screen, so the handler knows to step in.
+static FULLSCREEN: AtomicBool = AtomicBool::new(false);
+
+/// The Windows message that sizes the window's client area.
+const WM_NCCALCSIZE: u32 = 0x0083;
+
+/// Whether our handler answers this message itself: the client-area sizing
+/// message (with its rectangles, wparam non-zero) while in full screen. Answering
+/// it unchanged keeps the client area as big as the window, the whole screen.
+pub fn keeps_whole_screen(msg: u32, wparam: usize, fullscreen: bool) -> bool {
+    msg == WM_NCCALCSIZE && wparam != 0 && fullscreen
 }
 
-/// What to do to toggle full screen, and whether to maximize again on the way out.
-pub fn plan(fullscreen: bool, maximized: bool, was_maximized: bool) -> (Vec<Step>, bool) {
-    if fullscreen {
-        let mut steps = vec![Step::Fullscreen(false)];
-        if was_maximized {
-            steps.push(Step::Maximize);
-        }
-        (steps, false)
-    } else if maximized {
-        (vec![Step::Unmaximize, Step::Fullscreen(true)], true)
-    } else {
-        (vec![Step::Fullscreen(true)], false)
+/// Toggles full screen and says whether the window is now full screen. Not async,
+/// so it runs on the main thread and the handler's flag is set before the resize.
+#[tauri::command]
+pub fn toggle_fullscreen(window: WebviewWindow) -> Result<bool, String> {
+    let on = !window.is_fullscreen().map_err(|e| e.to_string())?;
+    FULLSCREEN.store(on, Ordering::Relaxed);
+    window.set_fullscreen(on).map_err(|e| e.to_string())?;
+    Ok(on)
+}
+
+/// Puts our handler on the window. Call once, after the window exists.
+#[cfg(windows)]
+pub fn install(window: &WebviewWindow) {
+    use windows::Win32::UI::Shell::SetWindowSubclass;
+
+    FULLSCREEN.store(window.is_fullscreen().unwrap_or(false), Ordering::Relaxed);
+    if let Ok(hwnd) = window.hwnd() {
+        // SAFETY: a live window handle and a procedure that lives for the program.
+        // Added after the window library's own, so it sees each message first.
+        let _ = unsafe { SetWindowSubclass(hwnd, Some(subclass), 1, 0) };
     }
 }
 
-static WAS_MAXIMIZED: AtomicBool = AtomicBool::new(false);
-
-/// Toggles full screen and says whether the window is now full screen. Not async,
-/// so it runs on the main thread and the steps happen in order, right away.
-#[tauri::command]
-pub fn toggle_fullscreen(window: WebviewWindow) -> Result<bool, String> {
-    let fullscreen = window.is_fullscreen().map_err(|e| e.to_string())?;
-    // Only Windows needs the maximize dance; macOS full screen handles a zoomed window.
-    let maximized = cfg!(windows) && window.is_maximized().map_err(|e| e.to_string())?;
-    let (steps, was) = plan(fullscreen, maximized, WAS_MAXIMIZED.load(Ordering::Relaxed));
-    WAS_MAXIMIZED.store(was, Ordering::Relaxed);
-    without_animations(&window, || {
-        for step in steps {
-            match step {
-                Step::Unmaximize => window.unmaximize(),
-                Step::Fullscreen(on) => window.set_fullscreen(on),
-                Step::Maximize => window.maximize(),
-            }
-            .map_err(|e| e.to_string())?;
-        }
-        Ok(!fullscreen)
-    })
-}
-
-/// Runs `f` with this window's minimize, maximize and restore animations off.
 #[cfg(windows)]
-fn without_animations<T>(window: &WebviewWindow, f: impl FnOnce() -> T) -> T {
-    use windows::Win32::Graphics::Dwm::{DWMWA_TRANSITIONS_FORCEDISABLED, DwmSetWindowAttribute};
-    use windows::core::BOOL;
+unsafe extern "system" fn subclass(
+    hwnd: windows::Win32::Foundation::HWND,
+    msg: u32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+    _id: usize,
+    _data: usize,
+) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::Foundation::LRESULT;
+    use windows::Win32::UI::Shell::DefSubclassProc;
 
-    let hwnd = window.hwnd().ok();
-    let set = |off: bool| {
-        if let Some(hwnd) = hwnd {
-            let value = BOOL::from(off);
-            // SAFETY: a valid window handle and a BOOL of the size we pass.
-            let _ = unsafe {
-                DwmSetWindowAttribute(
-                    hwnd,
-                    DWMWA_TRANSITIONS_FORCEDISABLED,
-                    (&raw const value).cast(),
-                    size_of::<BOOL>() as u32,
-                )
-            };
-        }
-    };
-    set(true);
-    let result = f();
-    set(false);
-    result
-}
-
-#[cfg(not(windows))]
-fn without_animations<T>(_: &WebviewWindow, f: impl FnOnce() -> T) -> T {
-    f()
+    if keeps_whole_screen(msg, wparam.0, FULLSCREEN.load(Ordering::Relaxed)) {
+        // 0 with the proposed rectangle untouched: the client area is the whole window.
+        return LRESULT(0);
+    }
+    // SAFETY: passes the message on, unchanged, to the next handler.
+    unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
 }
 
 #[cfg(test)]
@@ -90,21 +69,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_maximized_window_is_restored_first_and_maximized_again_after() {
-        let (enter, was) = plan(false, true, false);
-        assert_eq!(enter, [Step::Unmaximize, Step::Fullscreen(true)]);
-        assert!(was);
-        let (leave, was) = plan(true, false, was);
-        assert_eq!(leave, [Step::Fullscreen(false), Step::Maximize]);
-        assert!(!was);
-    }
-
-    #[test]
-    fn a_normal_window_stays_normal() {
-        let (enter, was) = plan(false, false, false);
-        assert_eq!(enter, [Step::Fullscreen(true)]);
-        let (leave, was) = plan(true, false, was);
-        assert_eq!(leave, [Step::Fullscreen(false)]);
-        assert!(!was);
+    fn steps_in_only_for_client_sizing_while_in_full_screen() {
+        assert!(keeps_whole_screen(WM_NCCALCSIZE, 1, true));
+        // Not in full screen: the window library trims a maximized window as before.
+        assert!(!keeps_whole_screen(WM_NCCALCSIZE, 1, false));
+        // Without rectangles to fill there is nothing to keep.
+        assert!(!keeps_whole_screen(WM_NCCALCSIZE, 0, true));
+        // Any other message goes on to the window library.
+        assert!(!keeps_whole_screen(0x0005, 1, true));
     }
 }

@@ -50,6 +50,7 @@ pub fn run() {
             #[cfg(windows)]
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_decorations(false);
+                window::install(&window);
             }
             let dir = app.path().app_data_dir()?;
             let store = ProfileStore::new(dir.join("connections.json"));

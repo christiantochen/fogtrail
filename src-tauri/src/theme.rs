@@ -1,7 +1,7 @@
 //! The colour scheme the person picked in the UI. Windows has no native menu, so
 //! there this only sets the window theme.
 
-use tauri::{AppHandle, Manager, Theme};
+use tauri::{AppHandle, Manager, Theme, window::Color};
 #[cfg(not(windows))]
 use tauri::{Runtime, menu::MenuItemKind};
 
@@ -46,6 +46,15 @@ impl ThemeChoice {
     }
 }
 
+/// The page's main background (`--main` in src/styles.css), so a part of the window
+/// the page hasn't painted yet (during a resize) is the app's colour, not white.
+pub fn background(theme: Theme) -> Color {
+    match theme {
+        Theme::Dark => Color(0x1a, 0x21, 0x28, 0xff),
+        _ => Color(0xfa, 0xfb, 0xfc, 0xff),
+    }
+}
+
 /// Ticks the chosen theme in the native View > Theme menu and unticks the others.
 /// Windows has no native menu (it draws its own), so there this finds nothing.
 #[cfg(not(windows))]
@@ -64,12 +73,17 @@ fn tick_theme<R: Runtime>(app: &AppHandle<R>, choice: ThemeChoice) {
     }
 }
 
-/// Called by the UI whenever the theme changes, and once at start.
+/// Called by the UI whenever the theme changes, once at start, and when the OS
+/// changes theme while the pick is System.
 #[tauri::command]
 pub fn set_theme(app: AppHandle, theme: String) -> Result<(), String> {
     let choice = ThemeChoice::parse(&theme).ok_or_else(|| format!("Unknown theme: {theme}"))?;
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.set_theme(choice.window_theme());
+        // With System, the window now reports the OS theme.
+        if let Ok(shown) = window.theme() {
+            let _ = window.set_background_color(Some(background(shown)));
+        }
     }
     #[cfg(not(windows))]
     tick_theme(&app, choice);
@@ -95,6 +109,12 @@ mod tests {
         assert_eq!(ThemeChoice::System.window_theme(), None);
         assert_eq!(ThemeChoice::Light.window_theme(), Some(Theme::Light));
         assert_eq!(ThemeChoice::Dark.window_theme(), Some(Theme::Dark));
+    }
+
+    #[test]
+    fn the_background_matches_the_page() {
+        assert_eq!(background(Theme::Light), Color(0xfa, 0xfb, 0xfc, 0xff));
+        assert_eq!(background(Theme::Dark), Color(0x1a, 0x21, 0x28, 0xff));
     }
 
     #[test]

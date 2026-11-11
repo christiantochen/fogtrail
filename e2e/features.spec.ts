@@ -741,42 +741,26 @@ test.describe("title bar (Windows)", () => {
     expect(await win(page)).toEqual(["minimize", "toggle_maximize", "close"]);
   });
 
-  test("F11 hides the bar in full screen and brings it back", async ({
+  // Like VS Code, the bar stays in full screen. The layout guard (fixtures.ts)
+  // fails the test if the page moves at all.
+  test("F11 keeps the bar and asks for full screen once each way", async ({
     page,
   }) => {
-    await open(page);
-    await page.keyboard.press("F11");
-    await expect(bar(page)).toBeHidden();
-    // No menu to open while the bar is hidden.
-    await page.keyboard.press("Alt+F");
-    await expect(page.getByRole("menu")).toHaveCount(0);
-    await page.keyboard.press("F11");
-    await expect(bar(page)).toBeVisible();
-    // The bar hides before the window goes full screen, and shows before it leaves.
-    expect(await win(page)).toEqual([
-      "toggle_fullscreen (bar hidden)",
-      "toggle_fullscreen (bar shown)",
-    ]);
-  });
-
-  // The backend restores and re-maximizes (src-tauri/src/window.rs); the page
-  // only asks once each way and doesn't touch maximize itself.
-  test("full screen from maximized is one call each way", async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as { __maximized: boolean }).__maximized = true;
     });
     await open(page);
     await page.keyboard.press("F11");
-    await expect(bar(page)).toBeHidden();
-    await page.keyboard.press("F11");
     await expect(bar(page)).toBeVisible();
+    await page.keyboard.press("Alt+V");
+    await expect(page.getByRole("menu", { name: "View" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("F11");
     await expect(
       bar(page).getByRole("button", { name: "Restore" }),
     ).toBeVisible();
-    expect(await win(page)).toEqual([
-      "toggle_fullscreen (bar hidden)",
-      "toggle_fullscreen (bar shown)",
-    ]);
+    // The backend keeps the window maximized; the page never touches it.
+    expect(await win(page)).toEqual(["toggle_fullscreen", "toggle_fullscreen"]);
   });
 
   test("shows the connection and key once browsing", async ({ page }) => {

@@ -24,14 +24,6 @@ export async function isMaximized(): Promise<boolean> {
   }
 }
 
-export async function isFullscreen(): Promise<boolean> {
-  try {
-    return await win().isFullscreen();
-  } catch {
-    return false;
-  }
-}
-
 /** Calls back when the window is resized or maximized. Returns an unsubscribe. */
 export function onResized(cb: () => void): () => void {
   let off: (() => void) | undefined;
@@ -59,7 +51,7 @@ export async function windowAction(id: string): Promise<void> {
       case "win:exit":
         return await exit(0);
       case "win:fullscreen":
-        // The backend does it in one step on Windows (see src-tauri/src/window.rs).
+        // The backend keeps the whole screen on Windows (see src-tauri/src/window.rs).
         await invoke("toggle_fullscreen");
         return;
     }
