@@ -24,6 +24,26 @@ export async function isMaximized(): Promise<boolean> {
   }
 }
 
+export async function isFullscreen(): Promise<boolean> {
+  try {
+    return await win().isFullscreen();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Toggles full screen and says whether the window is now full screen, or null
+ * outside Tauri. The backend keeps the whole screen on Windows (src-tauri/src/window.rs).
+ */
+export async function toggleFullscreen(): Promise<boolean | null> {
+  try {
+    return await invoke<boolean>("toggle_fullscreen");
+  } catch {
+    return null;
+  }
+}
+
 /** Calls back when the window is resized or maximized. Returns an unsubscribe. */
 export function onResized(cb: () => void): () => void {
   let off: (() => void) | undefined;
@@ -51,8 +71,7 @@ export async function windowAction(id: string): Promise<void> {
       case "win:exit":
         return await exit(0);
       case "win:fullscreen":
-        // The backend keeps the whole screen on Windows (see src-tauri/src/window.rs).
-        await invoke("toggle_fullscreen");
+        await toggleFullscreen();
         return;
     }
   } catch {

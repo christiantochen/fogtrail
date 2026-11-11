@@ -741,9 +741,8 @@ test.describe("title bar (Windows)", () => {
     expect(await win(page)).toEqual(["minimize", "toggle_maximize", "close"]);
   });
 
-  // Like VS Code, the bar stays in full screen. The layout guard (fixtures.ts)
-  // fails the test if the page moves at all.
-  test("F11 keeps the bar and asks for full screen once each way", async ({
+  // Like GitHub Desktop: the bar hides in full screen and a hint says how out.
+  test("F11 hides the bar, shows the hint, and brings the bar back", async ({
     page,
   }) => {
     await page.addInitScript(() => {
@@ -751,16 +750,35 @@ test.describe("title bar (Windows)", () => {
     });
     await open(page);
     await page.keyboard.press("F11");
-    await expect(bar(page)).toBeVisible();
+    await expect(bar(page)).toBeHidden();
+    const hint = page
+      .getByRole("status")
+      .filter({ hasText: "to exit full screen" });
+    await expect(hint).toHaveText("Press F11 to exit full screen");
+    // No menu to open while the bar is hidden.
     await page.keyboard.press("Alt+V");
-    await expect(page.getByRole("menu", { name: "View" })).toBeVisible();
-    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    // The hint goes away by itself.
+    await expect(hint).toHaveCount(0, { timeout: 5000 });
     await page.keyboard.press("F11");
+    await expect(bar(page)).toBeVisible();
     await expect(
       bar(page).getByRole("button", { name: "Restore" }),
     ).toBeVisible();
     // The backend keeps the window maximized; the page never touches it.
     expect(await win(page)).toEqual(["toggle_fullscreen", "toggle_fullscreen"]);
+  });
+
+  test("a window that starts in full screen starts without the bar", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __fullscreen: boolean }).__fullscreen = true;
+    });
+    await open(page);
+    await expect(bar(page)).toBeHidden();
+    await page.keyboard.press("F11");
+    await expect(bar(page)).toBeVisible();
   });
 
   test("shows the connection and key once browsing", async ({ page }) => {

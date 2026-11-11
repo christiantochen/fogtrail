@@ -1,8 +1,8 @@
 //! Full screen without a flash. The window library keeps a maximized frameless
 //! window above the taskbar (it trims the window in WM_NCCALCSIZE), even in full
 //! screen. Restoring the window first made it flash small, then big. Instead, a
-//! handler of ours sees WM_NCCALCSIZE first and, only while in full screen, keeps
-//! the whole screen. The window changes size once, like VS Code's.
+//! handler of ours sees WM_NCCALCSIZE first and, only while in full screen, sizes
+//! the page to the whole screen right away. The page changes size once.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -15,8 +15,7 @@ static FULLSCREEN: AtomicBool = AtomicBool::new(false);
 const WM_NCCALCSIZE: u32 = 0x0083;
 
 /// Whether our handler answers this message itself: the client-area sizing
-/// message (with its rectangles, wparam non-zero) while in full screen. Answering
-/// it unchanged keeps the client area as big as the window, the whole screen.
+/// message (with its rectangles, wparam non-zero) while in full screen.
 pub fn keeps_whole_screen(msg: u32, wparam: usize, fullscreen: bool) -> bool {
     msg == WM_NCCALCSIZE && wparam != 0 && fullscreen
 }
@@ -54,10 +53,28 @@ unsafe extern "system" fn subclass(
     _data: usize,
 ) -> windows::Win32::Foundation::LRESULT {
     use windows::Win32::Foundation::LRESULT;
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+    };
     use windows::Win32::UI::Shell::DefSubclassProc;
+    use windows::Win32::UI::WindowsAndMessaging::NCCALCSIZE_PARAMS;
 
     if keeps_whole_screen(msg, wparam.0, FULLSCREEN.load(Ordering::Relaxed)) {
-        // 0 with the proposed rectangle untouched: the client area is the whole window.
+        // The page gets the screen's exact size at once, not the maximized
+        // window's (which reaches past the screen's edges), so when the window
+        // then grows to fill the screen the page doesn't resize a second time.
+        let mut info = MONITORINFO {
+            cbSize: size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        // SAFETY: a live window handle; with wparam non-zero, lparam points to
+        // the NCCALCSIZE_PARAMS Windows passes for this message.
+        unsafe {
+            let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            if GetMonitorInfoW(monitor, &mut info).as_bool() {
+                (*(lparam.0 as *mut NCCALCSIZE_PARAMS)).rgrc[0] = info.rcMonitor;
+            }
+        }
         return LRESULT(0);
     }
     // SAFETY: passes the message on, unchanged, to the next handler.
