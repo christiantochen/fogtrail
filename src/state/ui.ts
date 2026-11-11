@@ -5,6 +5,7 @@ import { loadPins, savePins, togglePin } from "../lib/pins";
 import { loadRecent, pushRecent, saveRecent } from "../lib/recent";
 import { loadSession, type Session } from "../lib/session";
 import { toggleColumnPin } from "../lib/sql";
+import { loadTheme, type Theme } from "../lib/theme";
 import type { SortMode } from "../lib/keysort";
 import { ancestorsOf } from "../lib/tree";
 
@@ -48,6 +49,8 @@ interface UiState {
   /** SQL browsing (MySQL): the open schema and table, the tab and the page. */
   sqlSchema: string | null;
   sqlTable: string | null;
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
   sqlTab: "data" | "structure";
   /** Rows skipped before the page on screen. */
   sqlOffset: number;
@@ -179,6 +182,8 @@ export const useUi = create<UiState>((set) => ({
   filter: "",
   sqlSchema: null,
   sqlTable: null,
+  theme: loadTheme(),
+  setTheme: (theme) => set({ theme }),
   sqlTab: "data",
   sqlOffset: 0,
   sqlFilter: "",

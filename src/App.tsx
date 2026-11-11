@@ -6,6 +6,7 @@ import { ConnectionsSidebar } from "./components/ConnectionsSidebar";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Main } from "./components/Main";
 import { MenuBridge } from "./components/MenuBridge";
+import { ThemeBridge } from "./components/ThemeBridge";
 import { QuickOpen } from "./components/QuickOpen";
 import { Resuming } from "./components/Resuming";
 import { Sidebar } from "./components/Sidebar";
@@ -58,6 +59,7 @@ export default function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <MenuBridge />
+        <ThemeBridge />
         <CopyToast />
         <QuickOpen />
         <About />

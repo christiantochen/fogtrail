@@ -1,5 +1,5 @@
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --sidebar: #f1f4f7;
   --main: #fafbfc;
   --card: #ffffff;
@@ -30,33 +30,33 @@
   line-height: 1.4;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --sidebar: #151b21;
-    --main: #1a2128;
-    --live-bg: #17332a;
-    --live-ink: #8fd9bb;
-    --live-ring: rgb(75 190 150 / 25%);
-    --fresh: #4a3b14;
-    --card: #1f272f;
-    --border: #2b363f;
-    --border-soft: #26313a;
-    --ink: #e6ebf0;
-    --secondary: #a9b5c1;
-    --muted: #94a1ae;
-    --selected: #3b3013;
-    --selected-ink: #ffe7a8;
-    --chip: #26313a;
-    --chip-ink: #c5cfd9;
-    --badge: #26313a;
-    --green: #5fc3a0;
-    --idle: #4a5866;
-    --danger: #f97066;
-    --danger-bg: #3a1c19;
-    --json-key: #9cc4e4;
-    --json-num: #f2b33d;
-    --hover: rgb(230 235 240 / 7%);
-  }
+/* The page sets data-theme on <html> from the person's pick or the OS (see lib/theme.ts). */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --sidebar: #151b21;
+  --main: #1a2128;
+  --live-bg: #17332a;
+  --live-ink: #8fd9bb;
+  --live-ring: rgb(75 190 150 / 25%);
+  --fresh: #4a3b14;
+  --card: #1f272f;
+  --border: #2b363f;
+  --border-soft: #26313a;
+  --ink: #e6ebf0;
+  --secondary: #a9b5c1;
+  --muted: #94a1ae;
+  --selected: #3b3013;
+  --selected-ink: #ffe7a8;
+  --chip: #26313a;
+  --chip-ink: #c5cfd9;
+  --badge: #26313a;
+  --green: #5fc3a0;
+  --idle: #4a5866;
+  --danger: #f97066;
+  --danger-bg: #3a1c19;
+  --json-key: #9cc4e4;
+  --json-num: #f2b33d;
+  --hover: rgb(230 235 240 / 7%);
 }
 
 * {
@@ -682,11 +682,9 @@ table.grid {
   background: #e1f2ea;
   color: #1f5e47;
 }
-@media (prefers-color-scheme: dark) {
-  .alert--ok {
-    background: #17332a;
-    color: #8fd9bb;
-  }
+:root[data-theme="dark"] .alert--ok {
+  background: #17332a;
+  color: #8fd9bb;
 }
 .picker {
   display: grid;
@@ -1401,8 +1399,7 @@ select option {
 }
 .titlebar__item {
   display: flex;
-  justify-content: space-between;
-  gap: 28px;
+  gap: 6px;
   height: 28px;
   align-items: center;
   padding: 0 12px;
@@ -1414,7 +1411,18 @@ select option {
   background: var(--amber);
   color: #18212b;
 }
+.titlebar__tick {
+  width: 14px;
+  color: var(--amber);
+}
+.titlebar__item[aria-current="true"] .titlebar__tick {
+  color: #18212b;
+}
+.titlebar__label {
+  flex: 1;
+}
 .titlebar__keys {
+  margin-left: 22px;
   color: var(--muted);
   font-size: 12px;
 }

@@ -35,6 +35,7 @@ function Bar() {
   const drop = useRef<HTMLDivElement>(null);
   const before = useRef<Element | null>(null);
 
+  const theme = useUi((s) => s.theme);
   const connectedId = useUi((s) => s.connectedId);
   const selected = useUi((s) =>
     s.connected?.store === "sql"
@@ -263,14 +264,18 @@ function Bar() {
               <div
                 key={it.id}
                 id={`tb-item-${i}`}
-                role="menuitem"
+                role={it.theme ? "menuitemradio" : "menuitem"}
+                aria-checked={it.theme ? it.theme === theme : undefined}
                 className="titlebar__item"
                 aria-current={i === active ? "true" : undefined}
                 onMouseDown={(e) => e.preventDefault()}
                 onMouseEnter={() => setActive(i)}
                 onClick={() => choose(it.id)}
               >
-                <span>{it.label}</span>
+                <span className="titlebar__tick" aria-hidden="true">
+                  {it.theme && it.theme === theme ? "✓" : ""}
+                </span>
+                <span className="titlebar__label">{it.label}</span>
                 <span className="titlebar__keys">{it.keys}</span>
               </div>
             );

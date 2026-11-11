@@ -7,6 +7,10 @@ import "@fontsource/ibm-plex-sans/600.css";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "./styles.css";
+import { applyTheme, loadTheme } from "./lib/theme";
+
+// Before the first paint, so a saved Light or Dark never flashes the other one.
+applyTheme(loadTheme());
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

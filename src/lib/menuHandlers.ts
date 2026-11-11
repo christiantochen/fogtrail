@@ -34,6 +34,9 @@ export function menuHandlers(qc: QueryClient): MenuHandlers {
     findValue: () => window.dispatchEvent(new Event(FIND_VALUE_EVENT)),
     checkUpdates: () => void checkForUpdates(true),
     about: () => ui().setAbout(true),
+    themeSystem: () => ui().setTheme("system"),
+    themeLight: () => ui().setTheme("light"),
+    themeDark: () => ui().setTheme("dark"),
     serverInfo: () => {
       if (!ui().connected) return;
       ui().setView(ui().view === "server" ? "keys" : "server");

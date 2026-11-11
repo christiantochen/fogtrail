@@ -8,6 +8,7 @@ mod menu;
 pub mod profiles;
 pub mod secrets;
 pub mod sql_guard;
+pub mod theme;
 
 #[cfg(not(windows))]
 use tauri::Emitter;
@@ -74,6 +75,7 @@ pub fn run() {
             commands::table_rows,
             commands::run_query,
             commands::cancel_query,
+            theme::set_theme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

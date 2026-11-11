@@ -1,3 +1,5 @@
+import type { Theme } from "./theme";
+
 // The menus drawn by our own title bar (Windows). They mirror the native menu
 // in src-tauri/src/menu.rs, which macOS and Linux still use.
 
@@ -7,6 +9,8 @@ export interface Entry {
   label: string;
   /** Shown on the right, e.g. "Ctrl+N". */
   keys?: string;
+  /** Marks a theme choice: the title bar ticks the one that is current. */
+  theme?: Theme;
 }
 export type Item = Entry | "-";
 
@@ -51,6 +55,10 @@ export const MENUS: Menu[] = [
       { id: "find-value", label: "Find in Value", keys: "Ctrl+Shift+F" },
       { id: "refresh", label: "Refresh", keys: "Ctrl+R" },
       { id: "server-info", label: "Server Info", keys: "Ctrl+I" },
+      "-",
+      { id: "theme-system", label: "Theme: System", theme: "system" },
+      { id: "theme-light", label: "Theme: Light", theme: "light" },
+      { id: "theme-dark", label: "Theme: Dark", theme: "dark" },
       "-",
       { id: "win:fullscreen", label: "Toggle Full Screen", keys: "F11" },
     ],
