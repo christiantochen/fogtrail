@@ -802,25 +802,10 @@ table.grid {
   gap: 2px;
   min-width: 0;
 }
-/* WebKit draws its own pill around a select; reset it and draw a chevron. */
-.connswitch select {
-  appearance: none;
-  -webkit-appearance: none;
+.connswitch .dropdown__box {
   width: 100%;
-  min-width: 0;
-  padding: 2px 20px 2px 0;
-  border: 0;
-  border-radius: 6px;
-  background: transparent
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a96a3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
-    no-repeat right center;
-  color: var(--ink);
-  font: inherit;
+  padding: 2px 0;
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  overflow: hidden;
-  cursor: pointer;
 }
 
 /* Full key name for a row that is cut off */
@@ -1140,17 +1125,9 @@ button.fl__g:hover {
   color: var(--muted);
   font-size: 13px;
 }
-.autorefresh select {
-  appearance: none;
-  -webkit-appearance: none;
+.autorefresh .dropdown__box {
   height: 32px;
-  padding: 0 24px 0 4px;
-  border: 0;
-  background: var(--card)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a96a3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
-    no-repeat right 4px center;
-  color: var(--ink);
-  font: inherit;
+  padding: 0 8px 0 4px;
   font-weight: 500;
 }
 .live {
@@ -1197,12 +1174,6 @@ tr.row--fresh td {
   flex-wrap: wrap;
   justify-content: flex-end;
   margin-left: auto;
-}
-
-/* The open list of a native select is drawn by the OS, which paints it white unless told otherwise. */
-select option {
-  background-color: var(--card);
-  color: var(--ink);
 }
 
 /* Connection URL */
@@ -1486,31 +1457,15 @@ select option {
   height: 34px;
   min-width: 52px;
 }
-.dbpick__shown {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.dbpick .dropdown__box {
   height: 100%;
-  padding: 0 24px 0 9px;
+  padding: 0 8px 0 9px;
   border: 1px solid var(--border);
   border-radius: 9px;
-  background: var(--card)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a96a3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
-    no-repeat right 4px center;
+  background: var(--card);
   font-size: 13px;
+  font-family: "IBM Plex Mono", monospace;
   white-space: nowrap;
-}
-.dbpick select {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
-}
-.dbpick:focus-within .dbpick__shown {
-  outline: 2px solid var(--amber);
-  outline-offset: 1px;
 }
 .dbpick__error {
   position: absolute;
@@ -1578,13 +1533,12 @@ select option {
   font-size: 12px;
   color: var(--muted);
 }
-.sortpick select {
+.sortpick .dropdown__box {
   height: 22px;
+  padding: 0 6px 0 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--card);
-  color: var(--ink);
-  font: inherit;
 }
 
 /* Memory meter */
@@ -1636,30 +1590,19 @@ select option {
   background: var(--card);
   color: var(--muted);
 }
-.schemapick select {
+.schemapick .dropdown__box {
   flex: 1;
   min-width: 0;
   height: 100%;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  cursor: pointer;
-  appearance: none;
-  text-overflow: ellipsis;
+  padding: 0;
 }
-/* One ring for the whole row. The select inside it must not draw its own. */
+/* One ring for the whole row. The box inside it must not draw its own. */
 .schemapick:focus-within {
   outline: 2px solid var(--amber);
   outline-offset: 1px;
 }
-.schemapick select:focus-visible {
+.schemapick .dropdown__box:focus-visible {
   outline: none;
-}
-.schemapick__chev {
-  flex: none;
-  color: var(--secondary);
-  transform: rotate(90deg);
-  pointer-events: none;
 }
 .schemapick__count {
   flex: none;
@@ -2419,4 +2362,85 @@ select option {
 .sqlfoot__note {
   margin-left: 12px;
   color: var(--muted);
+}
+
+/* Dropdowns: the closed box, and the list, drawn like the menu bar. */
+.dropdown__box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dropdown__box:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.dropdown__box:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+.dropdown__value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dropdown__chev {
+  flex: none;
+  color: var(--muted);
+  transform: rotate(90deg);
+}
+.dropdown__list {
+  position: fixed;
+  z-index: 60;
+  max-width: 360px;
+  max-height: min(320px, calc(100vh - 16px));
+  margin: 0;
+  padding: 5px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 28%);
+  list-style: none;
+  font-size: 12.5px;
+}
+.dropdown__opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px 0 6px;
+  border-radius: 5px;
+  color: var(--ink);
+  white-space: nowrap;
+  cursor: default;
+}
+.dropdown__opt--active {
+  background: var(--amber);
+  color: #18212b;
+}
+.dropdown__tick {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  color: var(--amber);
+}
+.dropdown__meta {
+  margin-left: auto;
+  padding-left: 18px;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11.5px;
+}
+.dropdown__opt--active .dropdown__tick,
+.dropdown__opt--active .dropdown__meta {
+  color: #18212b;
 }

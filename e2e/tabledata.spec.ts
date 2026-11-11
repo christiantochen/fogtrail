@@ -263,7 +263,7 @@ test.describe("the row panel", () => {
 });
 
 test.describe("the database picker", () => {
-  test("draws one focus ring, on the row, not on the select inside it", async ({
+  test("draws one focus ring, on the row, not on the box inside it", async ({
     page,
   }) => {
     await openOrders(page);
@@ -272,7 +272,7 @@ test.describe("the database picker", () => {
     await page.keyboard.press("Tab");
     const rings = await page.evaluate(() => {
       const select = document.querySelector<HTMLElement>(
-        '.schemapick select[aria-label="Database"]',
+        '.schemapick [role="combobox"][aria-label="Database"]',
       )!;
       const row = select.closest<HTMLElement>(".schemapick")!;
       return {

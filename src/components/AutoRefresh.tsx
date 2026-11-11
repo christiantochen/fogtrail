@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { formatAgo, REFRESH_OPTIONS } from "../lib/refresh";
 import { useUi } from "../state/ui";
+import { Dropdown } from "./Dropdown";
 
 const subscribe = (cb: () => void) => {
   document.addEventListener("visibilitychange", cb);
@@ -40,20 +41,18 @@ export function AutoRefresh({
             : `Live · updated ${ago}`}
         </span>
       )}
-      <label className="autorefresh">
+      <div className="autorefresh">
         <span>Auto-refresh</span>
-        <select
-          aria-label="Auto-refresh"
+        <Dropdown
+          label="Auto-refresh"
           value={every}
-          onChange={(e) => setEvery(Number(e.target.value))}
-        >
-          {REFRESH_OPTIONS.map((s) => (
-            <option key={s} value={s}>
-              {s === 0 ? "Off" : `Every ${s}s`}
-            </option>
-          ))}
-        </select>
-      </label>
+          onChange={setEvery}
+          options={REFRESH_OPTIONS.map((n) => ({
+            value: n,
+            label: n === 0 ? "Off" : `Every ${n}s`,
+          }))}
+        />
+      </div>
     </>
   );
 }

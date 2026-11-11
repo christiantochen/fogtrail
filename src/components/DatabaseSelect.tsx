@@ -3,6 +3,7 @@ import { selectDatabase } from "../api/browse";
 import { useServerInfo } from "../api/queries";
 import { databaseChoices } from "../lib/format";
 import { useUi } from "../state/ui";
+import { Dropdown } from "./Dropdown";
 
 /**
  * A small database picker for the search row. It lists only databases that exist,
@@ -34,11 +35,8 @@ export function DatabaseSelect() {
   return (
     <div className="dbpick">
       {/* The closed box shows just "db0"; the list keeps the key counts. */}
-      <span className="dbpick__shown mono" aria-hidden="true">
-        db{conn.database}
-      </span>
-      <select
-        aria-label="Database"
+      <Dropdown
+        label="Database"
         title={
           count === null
             ? "Database. This server doesn't report how many it has, so only ones with keys are listed."
@@ -46,15 +44,13 @@ export function DatabaseSelect() {
         }
         value={conn.database}
         disabled={change.isPending}
-        onChange={(e) => change.mutate(Number(e.target.value))}
-      >
-        {choices.map((n) => (
-          <option key={n} value={n}>
-            db{n}
-            {counts.has(n) ? ` · ${counts.get(n)} keys` : ""}
-          </option>
-        ))}
-      </select>
+        onChange={(n) => change.mutate(n)}
+        options={choices.map((n) => ({
+          value: n,
+          label: `db${n}${counts.has(n) ? ` · ${counts.get(n)} keys` : ""}`,
+          shown: `db${n}`,
+        }))}
+      />
       {change.error && (
         <span role="alert" className="field__error dbpick__error">
           {change.error.message}

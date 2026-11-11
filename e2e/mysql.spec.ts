@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
+import { box, choose, optionTexts } from "./dropdown";
 import { stubBackend } from "./stub";
 
 async function openShop(page: Page) {
@@ -27,7 +28,7 @@ test.describe("browsing MySQL", () => {
     page,
   }) => {
     await openShop(page);
-    await expect(page.getByLabel("Database")).toHaveValue("shop");
+    await expect(box(page, "Database")).toHaveAttribute("data-value", "shop");
     await expect(table(page, /^orders/)).toContainText("~48k");
     await expect(table(page, /^paying_customers/)).toContainText("view");
     await expect(table(page, /^paying_customers/)).not.toContainText("~");
@@ -158,10 +159,9 @@ test.describe("browsing MySQL", () => {
 
   test("built-in databases stay hidden until asked for", async ({ page }) => {
     await openShop(page);
-    const select = page.getByLabel("Database");
-    await expect(select.locator("option")).toHaveText(["analytics", "shop"]);
+    expect(await optionTexts(page, "Database")).toEqual(["analytics", "shop"]);
     await page.getByRole("button", { name: "Show system databases" }).click();
-    await expect(select.locator("option")).toHaveText([
+    expect(await optionTexts(page, "Database")).toEqual([
       "analytics",
       "information_schema",
       "mysql",
@@ -177,7 +177,7 @@ test.describe("browsing MySQL", () => {
   }) => {
     await openShop(page);
     await table(page, /^orders/).click();
-    await page.getByLabel("Database").selectOption("analytics");
+    await choose(page, "Database", "analytics");
     await expect(page.getByText("This database has no tables.")).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Pick a table to read it" }),

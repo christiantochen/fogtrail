@@ -4,6 +4,7 @@ import { useKeys } from "../api/queries";
 import { useUi } from "../state/ui";
 import { ConnectionSwitch } from "./ConnectionSwitch";
 import { DatabaseSelect } from "./DatabaseSelect";
+import { Dropdown } from "./Dropdown";
 import { KeyTree } from "./KeyTree";
 import { Pinned } from "./Pinned";
 import { Chevron, Lock, Mark, Refresh } from "./Icons";
@@ -211,19 +212,20 @@ export function Sidebar() {
             </div>
           )}
         </div>
-        <label
+        <div
           className="sortpick"
           title="Redis can't sort for us, so Expiry covers the keys loaded so far."
         >
-          <select
-            aria-label="Sort keys"
+          <Dropdown
+            label="Sort keys"
             value={sort}
-            onChange={(e) => setSort(e.target.value as "name" | "expiry")}
-          >
-            <option value="name">Name</option>
-            <option value="expiry">Expiry</option>
-          </select>
-        </label>
+            onChange={setSort}
+            options={[
+              { value: "name", label: "Name" },
+              { value: "expiry", label: "Expiry" },
+            ]}
+          />
+        </div>
         <label
           className="delim"
           title="Each character here splits key names into folders, so :/ splits on both. Empty for a flat list."
