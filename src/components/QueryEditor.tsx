@@ -233,6 +233,7 @@ function Grid({ result }: { result: QueryResult }) {
                     </span>
                   </th>
                 ))}
+                <th className="sqlgrid__fill" aria-hidden="true" />
               </tr>
             </thead>
             <tbody>
@@ -257,6 +258,7 @@ function Grid({ result }: { result: QueryResult }) {
                       </td>
                     ),
                   )}
+                  <td className="sqlgrid__fill" aria-hidden="true" />
                 </tr>
               ))}
             </tbody>

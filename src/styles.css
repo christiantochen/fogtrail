@@ -1693,8 +1693,19 @@ select option {
 .sqlgrid {
   border-collapse: collapse;
 }
+/* Columns fit their content and the last, empty one takes the spare width, so a
+   table with few columns starts at the left edge and its row lines still reach
+   the right edge. */
 .sqlwrap .sqlgrid {
-  min-width: 100%;
+  width: 100%;
+}
+.sqlwrap .sqlgrid th,
+.sqlwrap .sqlgrid td {
+  width: 1%;
+}
+.sqlwrap .sqlgrid .sqlgrid__fill {
+  width: auto;
+  padding: 0;
 }
 .sqlgrid th {
   position: sticky;
