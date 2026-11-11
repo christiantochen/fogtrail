@@ -88,6 +88,25 @@ export function resultToTsv(
     .join("\n");
 }
 
+/**
+ * A short form of the estimate for tight places: 978, 1.2k, 48k, 401k, 7.7m.
+ * Rounded, not cut off, and still marked with `~` because it is an estimate.
+ */
+export function approxCompact(n: number | null): string {
+  if (n === null) return "";
+  if (n < 1000) return `~${n}`;
+  const units = ["k", "m", "b"];
+  // Rounding can carry into the next unit (999,500 is "1m", not "1000k").
+  for (let unit = 0; unit < units.length; unit++) {
+    const value = n / 1000 ** (unit + 1);
+    const rounded =
+      value < 10 ? Math.round(value * 10) / 10 : Math.round(value);
+    if (rounded < 1000 || unit === units.length - 1)
+      return `~${rounded}${units[unit]}`;
+  }
+  return `~${n}`;
+}
+
 /** "5 rows", "1 row" or "No rows". */
 export function rowCountLabel(n: number): string {
   if (n === 0) return "No rows";

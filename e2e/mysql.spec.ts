@@ -28,7 +28,7 @@ test.describe("browsing MySQL", () => {
   }) => {
     await openShop(page);
     await expect(page.getByLabel("Database")).toHaveValue("shop");
-    await expect(table(page, /^orders/)).toContainText("~48,213");
+    await expect(table(page, /^orders/)).toContainText("~48k");
     await expect(table(page, /^paying_customers/)).toContainText("view");
     await expect(table(page, /^paying_customers/)).not.toContainText("~");
     // It is a SQL screen, not the key browser.
