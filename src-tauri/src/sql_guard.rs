@@ -136,9 +136,15 @@ fn has_executable_comment(sql: &str) -> bool {
 }
 
 fn check_parsed(sql: &str, dialect: &MySqlDialect) -> Result<(), AppError> {
-    let mut statements = Parser::parse_sql(dialect, sql).map_err(|_| {
+    let mut statements = Parser::parse_sql(dialect, sql).map_err(|e| {
+        // The same refusal covers a typo (a missing `;`) and valid SQL this
+        // parser doesn't know, so say what it saw and don't blame the user.
+        let detail = e.to_string();
+        let detail = detail.strip_prefix("sql parser error: ").unwrap_or(&detail);
         AppError::Blocked(format!(
-            "Could not check that this statement is read-only. {ALLOWED}"
+            "Could not read this statement, so it was not sent. {detail}. \
+             Check for a missing `;` or a typo. If the SQL is valid, Fogtrail \
+             may not support that syntax yet. {ALLOWED}"
         ))
     })?;
     let Some(statement) = statements.pop().filter(|_| statements.is_empty()) else {
@@ -227,6 +233,20 @@ mod tests {
                 "message for {sql:?} should mention {word:?}, got: {m}"
             ),
             Err(other) => panic!("wrong error for {sql:?}: {other}"),
+        }
+    }
+
+    #[test]
+    fn a_missing_semicolon_says_where_the_parser_stopped() {
+        let sql = "select * from t where name = \"a\"\nselect * from t where name = \"a\"";
+        match check(sql) {
+            Err(AppError::Blocked(m)) => {
+                assert!(m.starts_with("Could not read this statement"), "got: {m}");
+                assert!(m.contains("Line: 2, Column: 1"), "got: {m}");
+                assert!(m.contains("missing `;`"), "got: {m}");
+                assert!(m.contains("Nothing was sent to the server."), "got: {m}");
+            }
+            other => panic!("should be blocked, got {other:?}"),
         }
     }
 
