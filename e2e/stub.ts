@@ -103,6 +103,13 @@ export async function stubBackend(
               (w.__win ??= []).push(cmd.split("|")[1]);
               return null;
             }
+            case "set_theme": {
+              const w = window as unknown as { __themes?: string[] };
+              (w.__themes ??= []).push(
+                (args as { theme?: string }).theme ?? "",
+              );
+              return null;
+            }
             case "plugin:app|version":
               return "0.2.1";
             case "list_profiles":

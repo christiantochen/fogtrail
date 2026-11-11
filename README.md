@@ -14,6 +14,8 @@ Save connection profiles (host, port, ACL user, database, TLS) with passwords in
 
 MySQL connections (tested with MySQL 8) browse the same way, read-only: pick a database, filter its tables (row counts are the server's estimates, shown with `~`), and read a table's rows 100 at a time or its structure (columns, indexes, foreign keys). Click a heading to sort, type a `WHERE` condition to filter (it is checked like the query editor), and click a row to see it laid out, with JSON over several lines. NULL is shown apart from an empty string. A query editor runs one statement at a time and only reads: `SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN` and `WITH`. Anything else is refused before it is sent. Results stop at 1,000 rows, a statement is stopped after 30 seconds, and a running query can be cancelled. The editor colours keywords, strings, numbers and comments, and suggests table names, column names (for the tables in the statement, fetched only when needed), other databases after `name.`, and SQL keywords as you type. Tab takes the first suggestion, the arrow keys then Enter pick another, Esc closes the list and Ctrl+Space opens it by hand. It is built into the app, with no extra editor library.
 
+Fogtrail follows your system's light or dark setting. To choose one yourself, use View → Theme (System, Light or Dark); the choice is remembered.
+
 ## Install
 
 Download the installer for your system from the [latest release](https://github.com/christiantochen/fogtrail/releases/latest):

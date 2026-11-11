@@ -1,7 +1,8 @@
 //! The native menu bar. Items only emit an event; the UI decides what each one
 //! does, because it is the part that knows whether a connection is open.
 
-use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+use crate::theme::ThemeChoice;
+use tauri::menu::{CheckMenuItemBuilder, Menu, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{AppHandle, Runtime};
 
 /// Name of the event the UI listens for. The payload is one of the ids below.
@@ -17,6 +18,8 @@ pub mod id {
     pub const FIND_VALUE: &str = "find-value";
     pub const CHECK_UPDATES: &str = "check-updates";
     pub const ABOUT: &str = "about";
+    pub const VIEW: &str = "view";
+    pub const THEME: &str = "theme";
 }
 
 pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
@@ -79,12 +82,25 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .select_all()
         .build()?;
 
-    let view = SubmenuBuilder::new(app, "View")
+    let theme_item = |choice: ThemeChoice, label: &str| {
+        CheckMenuItemBuilder::with_id(choice.menu_id(), label)
+            .checked(choice == ThemeChoice::System)
+            .build(app)
+    };
+    let theme = SubmenuBuilder::with_id(app, id::THEME, "Theme")
+        .item(&theme_item(ThemeChoice::System, "System")?)
+        .item(&theme_item(ThemeChoice::Light, "Light")?)
+        .item(&theme_item(ThemeChoice::Dark, "Dark")?)
+        .build()?;
+
+    let view = SubmenuBuilder::with_id(app, id::VIEW, "View")
         .item(&quick_open)
         .item(&search)
         .item(&find_value)
         .item(&refresh)
         .item(&server_info)
+        .separator()
+        .item(&theme)
         .separator()
         .fullscreen()
         .build()?;

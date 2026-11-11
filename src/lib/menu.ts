@@ -9,6 +9,9 @@ export interface MenuHandlers {
   findValue: () => void;
   checkUpdates: () => void;
   about: () => void;
+  themeSystem: () => void;
+  themeLight: () => void;
+  themeDark: () => void;
 }
 
 // A Map, so ids like "toString" can't match something inherited from Object.
@@ -22,6 +25,9 @@ const ROUTES = new Map<string, keyof MenuHandlers>([
   ["find-value", "findValue"],
   ["check-updates", "checkUpdates"],
   ["about", "about"],
+  ["theme-system", "themeSystem"],
+  ["theme-light", "themeLight"],
+  ["theme-dark", "themeDark"],
 ]);
 
 /** Runs the handler for a menu item id. Returns false for ids it doesn't know (such as predefined items). */

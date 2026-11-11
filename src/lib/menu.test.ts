@@ -11,6 +11,9 @@ const handlers = (): MenuHandlers => ({
   findValue: vi.fn(),
   checkUpdates: vi.fn(),
   about: vi.fn(),
+  themeSystem: vi.fn(),
+  themeLight: vi.fn(),
+  themeDark: vi.fn(),
 });
 
 describe("runMenuAction", () => {
@@ -25,6 +28,9 @@ describe("runMenuAction", () => {
       ["find-value", "findValue"],
       ["check-updates", "checkUpdates"],
       ["about", "about"],
+      ["theme-system", "themeSystem"],
+      ["theme-light", "themeLight"],
+      ["theme-dark", "themeDark"],
     ];
     for (const [id, name] of ids) {
       const h = handlers();
