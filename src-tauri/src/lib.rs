@@ -9,6 +9,7 @@ pub mod profiles;
 pub mod secrets;
 pub mod sql_guard;
 pub mod theme;
+pub mod window;
 
 #[cfg(not(windows))]
 use tauri::Emitter;
@@ -49,6 +50,7 @@ pub fn run() {
             #[cfg(windows)]
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_decorations(false);
+                window::install(&window);
             }
             let dir = app.path().app_data_dir()?;
             let store = ProfileStore::new(dir.join("connections.json"));
@@ -76,6 +78,7 @@ pub fn run() {
             commands::run_query,
             commands::cancel_query,
             theme::set_theme,
+            window::toggle_fullscreen,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

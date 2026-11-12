@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { exit } from "@tauri-apps/plugin-process";
 
@@ -31,25 +32,16 @@ export async function isFullscreen(): Promise<boolean> {
   }
 }
 
-// Whether the window was maximized when full screen began, so leaving it puts
-// the window back the way it was.
-let maximizedBeforeFullscreen = false;
-
 /**
- * Windows keeps a maximized frameless window above the taskbar, even in full
- * screen, so a maximized window is restored first and maximized again after.
+ * Toggles full screen and says whether the window is now full screen, or null
+ * outside Tauri. The backend keeps the whole screen on Windows (src-tauri/src/window.rs).
  */
-async function toggleFullscreen(): Promise<void> {
-  const w = win();
-  if (await w.isFullscreen()) {
-    await w.setFullscreen(false);
-    if (maximizedBeforeFullscreen) await w.toggleMaximize();
-    maximizedBeforeFullscreen = false;
-    return;
+export async function toggleFullscreen(): Promise<boolean | null> {
+  try {
+    return await invoke<boolean>("toggle_fullscreen");
+  } catch {
+    return null;
   }
-  maximizedBeforeFullscreen = await w.isMaximized();
-  if (maximizedBeforeFullscreen) await w.toggleMaximize();
-  await w.setFullscreen(true);
 }
 
 /** Calls back when the window is resized or maximized. Returns an unsubscribe. */
@@ -79,7 +71,8 @@ export async function windowAction(id: string): Promise<void> {
       case "win:exit":
         return await exit(0);
       case "win:fullscreen":
-        return await toggleFullscreen();
+        await toggleFullscreen();
+        return;
     }
   } catch {
     // Outside Tauri there is no window to control.

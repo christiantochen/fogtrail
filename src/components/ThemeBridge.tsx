@@ -11,9 +11,13 @@ export function ThemeBridge() {
     applyTheme(theme);
     saveTheme(theme);
     void syncNativeTheme(theme);
-    // "system" has to follow the OS while the app is open.
+    // "system" has to follow the OS while the app is open, and so does the
+    // window's background behind the page.
     return theme === "system"
-      ? onSystemThemeChange(() => applyTheme("system"))
+      ? onSystemThemeChange(() => {
+          applyTheme("system");
+          void syncNativeTheme("system");
+        })
       : undefined;
   }, [theme]);
 
