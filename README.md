@@ -23,7 +23,6 @@ Download the installer for your system from the [latest release](https://github.
 | Your system                         | File                               |
 | ----------------------------------- | ---------------------------------- |
 | macOS, Apple Silicon (M1 and newer) | `Fogtrail_<version>_aarch64.dmg`   |
-| macOS, Intel                        | `Fogtrail_<version>_x64.dmg`       |
 | Windows                             | `Fogtrail_<version>_x64-setup.exe` |
 
 The `.tar.gz`, `.sig` and `latest.json` files in a release are for the in-app updater, not for you to download.
@@ -128,7 +127,7 @@ Releases are cut from commit messages ([Conventional Commits](https://www.conven
 
 A dependency bump that changes the shipped app (a security fix, say) should be written as `fix(deps): ...` so it releases.
 
-After CI passes on `main`, the **Prepare release** workflow reads the commits since the last tag. If any is a `feat:` or `fix:` (and the last release is over a day old), it bumps the version in `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` and `src-tauri/tauri.conf.json`, writes `CHANGELOG.md`, commits `chore(release): vX.Y.Z`, tags it and starts the **Release** workflow. That builds macOS (Apple Silicon and Intel) and Windows installers into a **draft** release whose notes are the changelog entry. Review the draft on GitHub, then publish.
+After CI passes on `main`, the **Prepare release** workflow reads the commits since the last tag. If any is a `feat:` or `fix:` (and the last release is over a day old), it bumps the version in `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` and `src-tauri/tauri.conf.json`, writes `CHANGELOG.md`, commits `chore(release): vX.Y.Z`, tags it and starts the **Release** workflow. That builds macOS (Apple Silicon) and Windows installers into a **draft** release whose notes are the changelog entry. Review the draft on GitHub, then publish.
 
 To release on demand, for example after a pile of housekeeping, open Actions, choose **Prepare release**, Run workflow, and pick `patch`, `minor` or `major` (or `auto`). Tick **dry run** to see the plan without tagging anything. From a terminal: `gh workflow run prepare-release.yml -f bump=patch`.
 

@@ -15,7 +15,7 @@ You are the engineer who owns **Fogtrail** (github.com/christiantochen/fogtrail)
 2. **Passwords live in the OS keychain**, never in the saved connections file.
 3. **Strict CSP**: scripts, styles and fonts from the app only, no remote content, IPC as the only connection the webview opens.
 4. **A driver trait** keeps other data stores possible. Redis, Valkey and Dragonfly (key-value) and MySQL (SQL) are the first two kinds.
-5. **macOS (Apple Silicon and Intel) and Windows only**, built phase by phase.
+5. **macOS (Apple Silicon) and Windows only**, built phase by phase.
 6. **Updates are signed.** The private key never enters the repo.
 7. **Builds are not code-signed yet**, so the OS warns on first launch. The README says how to open it.
 8. **Public repo, MIT OR Apache-2.0**, Node 24 or newer.
@@ -64,7 +64,7 @@ These need his explicit yes:
 - **Release:** nothing is deployed. After CI passes on `main`, Prepare release bumps the version (`package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`), writes `CHANGELOG.md`, commits `chore(release): vX.Y.Z` and tags it. Release then builds the macOS and Windows installers into a **draft** release that Christianto publishes.
 - **Secrets** (names only, never values), set as GitHub repo secrets:
   - `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: sign the auto-update files.
-- **After a release:** check the draft lists the three installers plus `latest.json`, and that the download page at https://tools.christiantochen.com/fogtrail shows the new version.
+- **After a release:** check the draft lists the two installers plus `latest.json`, and that the download page at https://tools.christiantochen.com/fogtrail shows the new version.
 - Christianto works on Windows. Give PowerShell for commands that call an API, and say which shell any other command is for.
 
 ## Releases

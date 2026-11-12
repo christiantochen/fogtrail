@@ -49,7 +49,6 @@ jobs:
             echo "| Your system | File |"
             echo "| --- | --- |"
             echo "| macOS, Apple Silicon (M1 and newer) | \`Fogtrail_${v}_aarch64.dmg\` |"
-            echo "| macOS, Intel | \`Fogtrail_${v}_x64.dmg\` |"
             echo "| Windows | \`Fogtrail_${v}_x64-setup.exe\` |"
             echo
             echo "The other files (\`.tar.gz\`, \`.sig\`, \`latest.json\`) are used by the in-app updater."
@@ -93,10 +92,6 @@ jobs:
           - name: macOS (Apple Silicon)
             os: macos-latest
             target: aarch64-apple-darwin
-            bundles: app,dmg
-          - name: macOS (Intel)
-            os: macos-latest
-            target: x86_64-apple-darwin
             bundles: app,dmg
           - name: Windows
             os: windows-latest
@@ -145,7 +140,7 @@ jobs:
           [ -s url.txt ] || { echo "::error::latest.json is missing from the release"; exit 1; }
           gh api -H "Accept: application/octet-stream" "$(cat url.txt)" > latest.json
           jq -r '.platforms | keys[]' latest.json
-          for p in darwin-aarch64 darwin-x86_64 windows-x86_64; do
+          for p in darwin-aarch64 windows-x86_64; do
             jq -e --arg p "$p" '.platforms | keys | map(startswith($p)) | any' latest.json >/dev/null \
               || { echo "::error::latest.json has no $p entry"; exit 1; }
           done

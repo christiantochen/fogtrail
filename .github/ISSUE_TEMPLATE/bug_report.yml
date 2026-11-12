@@ -24,7 +24,6 @@ body:
       options:
         - Windows
         - macOS (Apple Silicon)
-        - macOS (Intel)
     validations:
       required: true
   - type: input
