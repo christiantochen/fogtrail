@@ -392,10 +392,14 @@ export async function stubBackend(
                 };
               };
               const w = window as unknown as {
+                __rowDelay?: number;
                 __rowCalls?: { table: string; offset: number }[];
                 __rowViews?: unknown[];
                 __FAIL_ROWS__?: boolean;
               };
+              // A test can make reads slow, to look at the loading state.
+              if (w.__rowDelay)
+                await new Promise((r) => setTimeout(r, w.__rowDelay));
               (w.__rowCalls ??= []).push({ table: a.table, offset: a.offset });
               (w.__rowViews ??= []).push(a.view ?? {});
               if (w.__FAIL_ROWS__)
