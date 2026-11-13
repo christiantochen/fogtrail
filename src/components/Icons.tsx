@@ -100,3 +100,10 @@ export const ExpandAllIcon = (p: SVGProps<SVGSVGElement>) => (
     <path d="m7 15 5 5 5-5M7 9l5-5 5 5" />
   </svg>
 );
+
+/** A cross: clear a field. */
+export const CloseIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="M18 6 6 18M6 6l12 12" />
+  </svg>
+);
