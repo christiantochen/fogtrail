@@ -101,12 +101,17 @@ export function Dropdown<T extends string | number>({
     document.addEventListener("mousedown", away);
     window.addEventListener("resize", close);
     window.addEventListener("blur", close);
-    window.addEventListener("scroll", close, true);
+    // Scrolling the page closes the list (it is placed against the window), but
+    // scrolling the list itself, to reach a row in a long one, must not.
+    const scrolled = (e: Event) => {
+      if (!list.current?.contains(e.target as Node)) close();
+    };
+    window.addEventListener("scroll", scrolled, true);
     return () => {
       document.removeEventListener("mousedown", away);
       window.removeEventListener("resize", close);
       window.removeEventListener("blur", close);
-      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("scroll", scrolled, true);
     };
   }, [open]);
 

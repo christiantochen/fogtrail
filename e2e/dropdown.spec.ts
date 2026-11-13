@@ -179,4 +179,32 @@ test.describe("dropdown", () => {
       "option",
     );
   });
+
+  test("scrolling a long list keeps it open, scrolling the page closes it", async ({
+    page,
+  }) => {
+    await stubBackend(page, [], { mysql: true, extraSchemas: 40 });
+    await page.goto("/");
+    await page
+      .locator(".card")
+      .filter({ hasText: "shop-prod" })
+      .getByRole("button", { name: "Connect", exact: true })
+      .click();
+    await page.getByRole("list", { name: "Tables" }).waitFor();
+    await box(page, "Database").click();
+    const l = list(page, "Database");
+    await expect(l).toBeVisible();
+    // The list is taller than its box, so it scrolls.
+    const scrolls = await l.evaluate((el) => el.scrollHeight > el.clientHeight);
+    expect(scrolls).toBe(true);
+    await l.hover();
+    await page.mouse.wheel(0, 300);
+    await expect
+      .poll(() => l.evaluate((el) => el.scrollTop))
+      .toBeGreaterThan(0);
+    await expect(l).toBeVisible();
+    // Something else scrolling still closes it.
+    await page.evaluate(() => document.body.dispatchEvent(new Event("scroll")));
+    await expect(l).toHaveCount(0);
+  });
 });
