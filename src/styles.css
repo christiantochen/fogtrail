@@ -25,6 +25,7 @@
   --json-key: #2b5f8a;
   --json-num: #9a6700;
   --hover: rgb(24 33 43 / 6%);
+  --scrim: rgb(14 19 24 / 45%);
   font-family: "IBM Plex Sans", system-ui, sans-serif;
   font-size: 13px;
   line-height: 1.4;
@@ -57,6 +58,7 @@
   --json-key: #9cc4e4;
   --json-num: #f2b33d;
   --hover: rgb(230 235 240 / 7%);
+  --scrim: rgb(0 0 0 / 55%);
 }
 
 * {
@@ -2300,7 +2302,7 @@ tr.row--fresh td {
   min-height: 0;
   overflow: auto;
 }
-.rowpanel__list {
+.rowfields {
   display: grid;
   grid-template-columns: 96px 1fr;
   gap: 6px 12px;
@@ -2308,37 +2310,160 @@ tr.row--fresh td {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-soft);
 }
-.rowpanel__item {
+.rowfields__item {
   display: contents;
 }
-.rowpanel__list dt {
+.rowfields dt {
   font-size: 12px;
   color: var(--muted);
   overflow-wrap: anywhere;
 }
-.rowpanel__list dd {
+.rowfields dd {
   margin: 0;
   font-size: 12.5px;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
-.rowpanel__json {
+.rowjson {
   padding: 10px 0 0;
 }
-.rowpanel__jsonhead {
+.rowjson + .rowjson {
+  border-top: 1px solid var(--border-soft);
+}
+.rowjson__head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 0 16px;
   font-size: 12px;
   color: var(--muted);
 }
-.rowpanel__spacer {
+.rowjson__spacer {
   flex: 1;
 }
-.rowpanel__json .code {
+.rowjson .code {
   margin: 0;
-  padding: 8px 16px 16px;
+  max-height: none;
+  padding: 8px 16px 12px 8px;
+}
+.btn--square {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
+}
+
+/* The row dialog: a big reading view over the table. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--scrim);
+}
+.rowdialog {
+  width: min(1100px, 100%);
+  height: min(700px, 100%);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  overflow: hidden;
+}
+.rowdialog--solo {
+  width: min(900px, 100%);
+  height: auto;
+  max-height: 100%;
+}
+.rowdialog__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.rowdialog__solotitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rowdialog__kbd {
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+}
+.rowdialog__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.rowdialog__fields {
+  flex: none;
+  width: 320px;
+  padding: 16px 0 0;
+  border-right: 1px solid var(--border-soft);
+  overflow: auto;
+}
+.rowdialog__fields .section-label {
+  padding: 0 16px;
+}
+.rowdialog__fields .rowfields {
+  grid-template-columns: 104px 1fr;
+  gap: 8px 12px;
+  border-bottom: 0;
+}
+.rowdialog__json {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+.rowdialog__json .rowjson__head,
+.rowdialog__json .rowjson .code {
+  padding-right: 20px;
+}
+.rowdialog__body--plain .rowdialog__fields {
+  width: auto;
+  flex: 1;
+  border-right: 0;
+}
+.rowdialog__solo {
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 20px 14px 8px;
+}
+.rowdialog__solo .code {
+  margin: 0;
+  max-height: none;
+  padding: 0;
+}
+/* A narrow window: the columns go above the JSON in two columns. */
+@media (max-width: 960px) {
+  .rowdialog__body {
+    flex-direction: column;
+    overflow: auto;
+  }
+  .rowdialog__fields {
+    width: auto;
+    padding-bottom: 4px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-soft);
+    overflow: visible;
+  }
+  .rowdialog__fields .rowfields {
+    grid-template-columns: 96px 1fr 96px 1fr;
+  }
+  .rowdialog__json {
+    overflow: visible;
+  }
 }
 
 /* Pinned columns stay at the left while the table scrolls sideways. */

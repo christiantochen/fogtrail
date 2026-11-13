@@ -8,7 +8,9 @@ import {
   filterTables,
   isJsonType,
   isNumericType,
+  isTextType,
   isTimeType,
+  jsonOf,
   jsonSummary,
   lineCount,
   livePins,
@@ -19,7 +21,10 @@ import {
   rangeLabel,
   resultToTsv,
   rowCountLabel,
+  rowTitle,
+  splitRow,
   splitTimestamp,
+  TEXT_JSON_LIMIT,
   toggleColumnPin,
   visibleSchemas,
 } from "./sql";
@@ -279,5 +284,67 @@ describe("pinned columns", () => {
     const full = ["a", "b", "c"];
     expect(toggleColumnPin(full, "d")).toBe(full);
     expect(toggleColumnPin(full, "b")).toEqual(["a", "c"]);
+  });
+});
+
+describe("JSON in text columns", () => {
+  it("knows the text types", () => {
+    for (const t of ["TEXT", "LONGTEXT", "VARCHAR", "CHAR", "tinytext"])
+      expect(isTextType(t)).toBe(true);
+    for (const t of ["JSON", "BIGINT", "DATETIME", "BLOB"])
+      expect(isTextType(t)).toBe(false);
+  });
+
+  it("always shows a JSON column as JSON", () => {
+    expect(jsonOf("JSON", '{"a":1}')).toEqual({
+      pretty: '{\n  "a": 1\n}',
+      source: "json",
+    });
+    expect(jsonOf("JSON", "not json")).toBeNull();
+    expect(jsonOf("JSON", null)).toBeNull();
+  });
+
+  it("shows a text column as JSON only when it holds an object or array", () => {
+    expect(jsonOf("TEXT", '{"a":1}')?.source).toBe("text");
+    expect(jsonOf("VARCHAR", " [1, 2] ")?.source).toBe("text");
+    // Scalars that happen to parse are still plain text.
+    for (const v of ["12", "true", "null", '"word"', "hello", "{oops", ""])
+      expect(jsonOf("TEXT", v)).toBeNull();
+    expect(jsonOf("TEXT", null)).toBeNull();
+    expect(jsonOf("BIGINT", "[1]")).toBeNull();
+  });
+
+  it("leaves a very large text value alone", () => {
+    const big = "[" + "1,".repeat(TEXT_JSON_LIMIT) + "1]";
+    expect(jsonOf("LONGTEXT", big)).toBeNull();
+  });
+
+  it("splits a row into list columns and JSON columns", () => {
+    const columns = [
+      { name: "id", typeName: "BIGINT" },
+      { name: "items", typeName: "JSON" },
+      { name: "meta", typeName: "TEXT" },
+      { name: "notes", typeName: "VARCHAR" },
+    ];
+    const split = splitRow(columns, ["1", "[1]", '{"a":1}', "hello"]);
+    expect(split.plain).toEqual([0, 3]);
+    expect(split.json.map((j) => [j.index, j.source])).toEqual([
+      [1, "json"],
+      [2, "text"],
+    ]);
+    // A NULL or non-JSON value goes to the list.
+    expect(splitRow(columns, ["1", null, "x", null]).plain).toEqual([
+      0, 1, 2, 3,
+    ]);
+  });
+});
+
+describe("rowTitle", () => {
+  it("names a row by its id when there is one", () => {
+    expect(
+      rowTitle("orders", [{ name: "id" }, { name: "x" }], ["7", "a"]),
+    ).toBe("orders · id 7");
+    expect(rowTitle("orders", [{ name: "x" }], ["a"])).toBe("orders");
+    expect(rowTitle("orders", [{ name: "id" }], [null])).toBe("orders");
   });
 });
