@@ -500,6 +500,20 @@ test.describe("the row dialog", () => {
     await expect(
       solo.getByRole("button", { name: "Back to row" }),
     ).toBeFocused();
+    // The arrow and the label sit on the button's middle line.
+    const offsets = await solo
+      .getByRole("button", { name: "Back to row" })
+      .evaluate((b) => {
+        const mid = (r: DOMRect) => r.top + r.height / 2;
+        const range = document.createRange();
+        range.selectNodeContents(b.lastChild as Node);
+        const centre = mid(b.getBoundingClientRect());
+        return [
+          mid(b.querySelector("svg")!.getBoundingClientRect()) - centre,
+          mid(range.getBoundingClientRect()) - centre,
+        ];
+      });
+    for (const o of offsets) expect(Math.abs(o)).toBeLessThan(1.5);
     // No row arrows on one value on its own.
     await expect(solo.getByRole("button", { name: "Next row" })).toHaveCount(0);
     await solo.getByRole("button", { name: "Back to row" }).click();

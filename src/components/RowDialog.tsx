@@ -238,7 +238,7 @@ export function RowDialog({
               <button
                 ref={back}
                 type="button"
-                className="btn btn--small"
+                className="btn btn--small btn--icon"
                 onClick={escape}
               >
                 <ArrowLeftIcon /> Back to row
