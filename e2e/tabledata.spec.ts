@@ -394,6 +394,85 @@ test.describe("the row dialog", () => {
     await expect(d).toHaveCount(0);
   });
 
+  // Every place a column name wraps must be right after an underscore, never inside a word.
+  const midWordBreaks = (page: Page) =>
+    page.evaluate(() => {
+      const bad: string[] = [];
+      for (const dt of document.querySelectorAll(
+        '[role="dialog"] .rowfields dt',
+      )) {
+        const node = dt.firstChild ? dt : null;
+        if (!node) continue;
+        const walker = document.createTreeWalker(dt, NodeFilter.SHOW_TEXT);
+        let top: number | null = null;
+        let prev = "";
+        for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+          const text = t.textContent ?? "";
+          for (let i = 0; i < text.length; i++) {
+            const r = document.createRange();
+            r.setStart(t, i);
+            r.setEnd(t, i + 1);
+            const rect = r.getClientRects()[0];
+            if (!rect) continue;
+            if (top !== null && rect.top > top + 4 && prev !== "_")
+              bad.push(dt.textContent ?? "");
+            top = rect.top;
+            prev = text[i];
+          }
+        }
+      }
+      return bad;
+    });
+
+  test("a wide row with no JSON flows into several columns, wraps names after underscores and values in their cell", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    await page
+      .getByRole("list", { name: "Tables" })
+      .getByRole("button", { name: /^settings/ })
+      .click();
+    await page
+      .getByRole("table", { name: "Rows of settings" })
+      .locator("tbody tr")
+      .first()
+      .click();
+    await panel(page)
+      .getByRole("button", { name: "Expand row in a dialog" })
+      .click();
+    const d = dialog(page);
+    await expect(d).toContainText("Columns");
+    await expect(d.locator(".rowdialog__count")).toHaveText("24");
+    // At this width the columns sit side by side: more than one left edge.
+    const lefts = await d
+      .locator(".rowfields__item")
+      .evaluateAll((els) => [
+        ...new Set(els.map((e) => Math.round(e.getBoundingClientRect().left))),
+      ]);
+    expect(lefts.length).toBeGreaterThanOrEqual(2);
+    expect(await midWordBreaks(page)).toEqual([]);
+    // The long location stays inside its own cell.
+    const fits = await d
+      .locator(".rowfields__item", { hasText: "Opposite Sample Park" })
+      .locator("dd")
+      .evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+    expect(fits).toBe(true);
+  });
+
+  test("with JSON the columns list is a fixed 360px side and names still break cleanly", async ({
+    page,
+  }) => {
+    await openRow(page);
+    await panel(page)
+      .getByRole("button", { name: "Expand row in a dialog" })
+      .click();
+    const d = dialog(page);
+    const box = await d.locator(".rowdialog__fields").boundingBox();
+    expect(Math.round(box!.width)).toBe(360);
+    await expect(d.locator(".rowdialog__count")).toHaveText("8");
+    expect(await midWordBreaks(page)).toEqual([]);
+  });
+
   test("a row without JSON still opens, with its columns in one list", async ({
     page,
   }) => {
