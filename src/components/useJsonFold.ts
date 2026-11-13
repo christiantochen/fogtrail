@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { collapseAll, parseBlocks } from "../lib/fold";
+import { collapseAll, lineAt, parseBlocks, unfoldFor } from "../lib/fold";
+import type { Range } from "../lib/find";
 import { COLOR_LIMIT, type Folding } from "./JsonText";
 
 /** Fold state for one formatted JSON text: which blocks are closed, and the buttons that change it. */
@@ -33,5 +34,22 @@ export function useJsonFold(text: string, startFolded: boolean) {
     canFold: foldable && inner.length > 0,
     allFolded,
     toggleAll: () => setFolded(allFolded ? new Set() : collapseAll(blocks)),
+    /** Opens every fold that hides this line. */
+    reveal: (line: number) => setFolded((f) => unfoldFor(f, blocks, line)),
   };
+}
+
+/** When the match the search is on moves into a fold, opens it, so a hit is never out of sight. */
+export function useRevealHit(
+  fold: ReturnType<typeof useJsonFold>,
+  text: string,
+  ranges: readonly Range[],
+  current: number,
+) {
+  const hit = current >= 0 ? (ranges[current]?.[0] ?? -1) : -1;
+  const [seen, setSeen] = useState(-1);
+  if (seen !== hit) {
+    setSeen(hit);
+    if (hit >= 0) fold.reveal(lineAt(text, hit));
+  }
 }

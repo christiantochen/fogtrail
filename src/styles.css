@@ -2511,6 +2511,17 @@ tr.row--fresh td {
   gap: 8px;
   padding: 14px 16px 6px;
 }
+.find--dialog {
+  margin-left: 0;
+}
+.find--dialog .find__input {
+  width: 240px;
+}
+.rowdialog__none {
+  margin: 0;
+  padding: 8px 16px;
+  color: var(--muted);
+}
 .rowdialog__count {
   color: var(--muted);
   font-size: 12px;
