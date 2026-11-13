@@ -3,6 +3,7 @@ import type { ResultColumn } from "../api/types";
 import { rowTitle } from "../lib/sql";
 import { ExpandIcon } from "./Icons";
 import { RowBody } from "./RowBody";
+import { useEscape } from "./useEscape";
 
 /** One row of a table laid out as a list: every column, with JSON folded one level. */
 export function RowPanel({
@@ -25,6 +26,8 @@ export function RowPanel({
   /** Open the dialog: on the whole row, or on one column's JSON. */
   onExpand: (column: number | null) => void;
 }) {
+  // Esc with focus elsewhere must not leave full screen on macOS.
+  useEscape();
   const close = useRef<HTMLButtonElement>(null);
   // Opening the panel moves focus into it, so Esc and the arrow buttons work at once.
   useEffect(() => close.current?.focus(), []);

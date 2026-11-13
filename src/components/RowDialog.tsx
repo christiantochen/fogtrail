@@ -7,6 +7,7 @@ import { rowTitle, splitRow, type JsonField } from "../lib/sql";
 import { FoldAllButton } from "./JsonSection";
 import { JsonText } from "./JsonText";
 import { RowBody } from "./RowBody";
+import { useEscape } from "./useEscape";
 import { useJsonFold, useRevealHit } from "./useJsonFold";
 
 const FOCUSABLE =
@@ -36,6 +37,8 @@ export function RowDialog({
   onMove: (delta: number) => void;
   onClose: () => void;
 }) {
+  // Esc closes the dialog wherever focus is, not only inside it (see useEscape).
+  useEscape(onClose);
   const box = useRef<HTMLDivElement>(null);
   const close = useRef<HTMLButtonElement>(null);
   const split = useMemo(() => splitRow(columns, row), [columns, row]);
