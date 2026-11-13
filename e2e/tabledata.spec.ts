@@ -710,6 +710,57 @@ test.describe("the row dialog", () => {
     ).toHaveValue("");
   });
 
+  // Records whether each Esc reached the page already marked as handled, which is what keeps macOS
+  // from leaving full screen.
+  const recordEsc = (page: Page) =>
+    page.evaluate(() => {
+      const w = window as unknown as { __esc: boolean[] };
+      w.__esc = [];
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") w.__esc.push(e.defaultPrevented);
+      });
+    });
+  const escSeen = (page: Page) =>
+    page.evaluate(() => (window as unknown as { __esc: boolean[] }).__esc);
+
+  test("Esc closes the dialog when focus is on plain text, and the OS never gets it", async ({
+    page,
+  }) => {
+    const d = await openDialog(page);
+    await recordEsc(page);
+    // Clicking text moves focus out of the dialog's own controls.
+    await d.getByText("184.50").click();
+    await expect(d.getByRole("button", { name: "Close" })).not.toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(d).toHaveCount(0);
+    expect(await escSeen(page)).toEqual([true]);
+  });
+
+  test("Esc with focus on the page body still closes the dialog", async ({
+    page,
+  }) => {
+    const d = await openDialog(page);
+    await page.evaluate(() => (document.activeElement as HTMLElement).blur());
+    await page.keyboard.press("Escape");
+    await expect(d).toHaveCount(0);
+  });
+
+  test("Esc is kept from the OS while the side panel is open, wherever focus is", async ({
+    page,
+  }) => {
+    await openRow(page);
+    await expect(panel(page)).toBeVisible();
+    await recordEsc(page);
+    await page.evaluate(() => (document.activeElement as HTMLElement).blur());
+    await page.keyboard.press("Escape");
+    expect(await escSeen(page)).toEqual([true]);
+    // Focus was outside the panel, so it stays open; with focus inside, Esc still closes it.
+    await expect(panel(page)).toBeVisible();
+    await panel(page).getByRole("button", { name: "Close" }).focus();
+    await page.keyboard.press("Escape");
+    await expect(panel(page)).toHaveCount(0);
+  });
+
   test("searching a single JSON value covers only that value", async ({
     page,
   }) => {
