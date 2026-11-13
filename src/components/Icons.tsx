@@ -107,3 +107,9 @@ export const CloseIcon = (p: SVGProps<SVGSVGElement>) => (
     <path d="M18 6 6 18M6 6l12 12" />
   </svg>
 );
+
+export const ArrowLeftIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="M19 12H5M12 19l-7-7 7-7" />
+  </svg>
+);
