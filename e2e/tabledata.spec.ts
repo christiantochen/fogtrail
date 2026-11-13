@@ -78,8 +78,46 @@ test.describe("the WHERE filter", () => {
     await openOrders(page);
     await expect(filterBox(page)).toHaveValue("");
     await expect(page.getByText("WHERE", { exact: true })).toBeVisible();
-    await expect(page.getByText(/checked like the query editor/)).toBeVisible();
-    await expect(page.getByRole("button", { name: "Clear" })).toBeDisabled();
+    // Nothing to clear yet, and no hint line under the box.
+    await expect(
+      page.getByRole("button", { name: "Clear filter" }),
+    ).toHaveCount(0);
+    await expect(page.getByText(/checked like the query editor/)).toHaveCount(
+      0,
+    );
+  });
+
+  test("the button says Refresh until the text changes, then Apply", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    const refresh = page.getByRole("button", { name: "Refresh", exact: true });
+    await expect(refresh).toBeVisible();
+    await expect(apply(page)).toHaveCount(0);
+    const before = (await views(page)).length;
+    await refresh.click();
+    await expect
+      .poll(async () => (await views(page)).length)
+      .toBeGreaterThan(before);
+    await filterBox(page).fill("status = 'paid'");
+    await expect(apply(page)).toBeVisible();
+    await expect(refresh).toHaveCount(0);
+    await apply(page).click();
+    // Applied and unchanged again: back to Refresh.
+    await expect(refresh).toBeVisible();
+  });
+
+  test("Esc in the box clears and applies in one step", async ({ page }) => {
+    await openOrders(page);
+    await filterBox(page).fill("status = 'paid'");
+    await filterBox(page).press("Enter");
+    await expect(page.getByText("Filtered · Rows 1–2")).toBeVisible();
+    await filterBox(page).press("Escape");
+    await expect(filterBox(page)).toHaveValue("");
+    await expect(
+      page.getByRole("table", { name: "Rows of orders" }).locator("tbody tr"),
+    ).toHaveCount(3);
+    expect((await views(page)).at(-1)).toEqual({});
   });
 
   test("Enter applies it, the rows narrow, and the backend is asked", async ({
@@ -96,12 +134,12 @@ test.describe("the WHERE filter", () => {
     expect((await views(page)).at(-1)).toEqual({ filter: "status = 'paid'" });
   });
 
-  test("Clear brings every row back", async ({ page }) => {
+  test("the × in the box brings every row back", async ({ page }) => {
     await openOrders(page);
     await filterBox(page).fill("status = 'paid'");
     await apply(page).click();
     await expect(page.getByText("Filtered · Rows 1–2")).toBeVisible();
-    await page.getByRole("button", { name: "Clear" }).click();
+    await page.getByRole("button", { name: "Clear filter" }).click();
     await expect(filterBox(page)).toHaveValue("");
     await expect(
       page.getByRole("table", { name: "Rows of orders" }).locator("tbody tr"),

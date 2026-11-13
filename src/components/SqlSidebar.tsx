@@ -269,7 +269,7 @@ export function SqlSidebar() {
 
       <div className="sidebar__foot">
         <Lock />
-        <span>Read-only session. Writes are blocked by the server.</span>
+        <span>Read-only session. Fogtrail blocks writes.</span>
       </div>
     </aside>
   );

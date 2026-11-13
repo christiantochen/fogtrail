@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
-import { useRows, useStructure, useTables } from "../api/queries";
+import { useRows, useStructure } from "../api/queries";
 import type {
   ColumnInfo,
   RowPage,
@@ -11,7 +11,6 @@ import { copyText } from "../lib/clipboard";
 import { refreshAll } from "../lib/refreshAll";
 import {
   ROWS_PER_PAGE,
-  approxRows,
   columnSub,
   isJsonType,
   isNumericType,
@@ -27,7 +26,6 @@ import {
 } from "../lib/sql";
 import { useUi } from "../state/ui";
 import { FilterBar } from "./FilterBar";
-import { Lock, Refresh } from "./Icons";
 import { PinButton } from "./PinButton";
 import { useColumnPins } from "./useColumnPins";
 import { RowDialog } from "./RowDialog";
@@ -41,14 +39,9 @@ export function TableView({
   schema: string;
   table: string;
 }) {
-  const qc = useQueryClient();
   const tab = useUi((s) => s.sqlTab);
   const setTab = useUi((s) => s.setSqlTab);
   const structure = useStructure(schema, table);
-  const tables = useTables(schema);
-  const estimate =
-    tables.data?.find((t) => t.name === table)?.estimatedRows ?? null;
-  const refreshing = structure.isFetching || tables.isFetching;
 
   if (structure.isError && !structure.data) {
     return (
@@ -72,50 +65,8 @@ export function TableView({
   const s = structure.data;
   return (
     <div className="sqltable">
-      <div className="detail__head">
-        <div>
-          <h1 className="detail__name mono">{table}</h1>
-          <div className="chips">
-            {s ? (
-              <>
-                <span className="chip">
-                  {s.kind === "view" ? "View" : "Table"}
-                </span>
-                {s.engine && <span className="chip">{s.engine}</span>}
-                {estimate !== null && (
-                  <span className="chip">
-                    {approxRows(estimate)} rows (estimate)
-                  </span>
-                )}
-                <span className="chip">{s.columns.length} columns</span>
-                <span className="chip chip--icon">
-                  <Lock width={12} height={12} /> Read-only
-                </span>
-                {s.comment && <span className="chip">{s.comment}</span>}
-              </>
-            ) : (
-              <span className="skeleton" style={{ width: 240 }} />
-            )}
-          </div>
-        </div>
-        <div className="actions">
-          <button
-            type="button"
-            className="btn"
-            onClick={() => void copyText(`${schema}.${table}`, "table name")}
-          >
-            Copy name
-          </button>
-          <button
-            type="button"
-            className="btn btn--icon"
-            onClick={() => refreshAll(qc)}
-            aria-label="Refresh table"
-          >
-            <Refresh className={refreshing ? "spin" : undefined} /> Refresh
-          </button>
-        </div>
-      </div>
+      {/* The breadcrumb already shows the name; this keeps it for screen readers. */}
+      <h1 className="sr-only">{table}</h1>
 
       <div className="panel sqlpanel">
         <div className="panel__bar">
@@ -170,7 +121,16 @@ function Data({
   };
   const q = useRows(schema, table, offset, view);
 
-  const bar = <FilterBar key={table} applied={filter} onApply={setFilter} />;
+  const qc = useQueryClient();
+  const bar = (
+    <FilterBar
+      key={table}
+      applied={filter}
+      onApply={setFilter}
+      onRefresh={() => refreshAll(qc)}
+      refreshing={q.isFetching}
+    />
+  );
 
   if (q.isError) {
     const blocked = q.error.kind === "blocked";
@@ -533,6 +493,22 @@ function Cell({
 function Structure({ s }: { s: TableStructure }) {
   return (
     <div className="sqlpanel__scroll">
+      <dl className="sqlfacts">
+        <dt>Kind</dt>
+        <dd>{s.kind === "view" ? "View" : "Table"}</dd>
+        {s.engine && (
+          <>
+            <dt>Engine</dt>
+            <dd>{s.engine}</dd>
+          </>
+        )}
+        {s.comment && (
+          <>
+            <dt>Comment</dt>
+            <dd>{s.comment}</dd>
+          </>
+        )}
+      </dl>
       <h2 className="sqlsection">Columns</h2>
       <table className="sqlgrid sqlgrid--plain" aria-label="Columns">
         <thead>

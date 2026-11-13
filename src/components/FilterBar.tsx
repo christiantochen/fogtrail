@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { CloseIcon, Refresh } from "./Icons";
 import { tokenClass, tokenize, HIGHLIGHT_LIMIT } from "../lib/sqlHighlight";
 
 /**
@@ -9,15 +10,24 @@ import { tokenClass, tokenize, HIGHLIGHT_LIMIT } from "../lib/sqlHighlight";
 export function FilterBar({
   applied,
   onApply,
+  onRefresh,
+  refreshing,
 }: {
   applied: string;
   onApply: (filter: string) => void;
+  /** Reload the table, used by the button while the filter has nothing new to apply. */
+  onRefresh: () => void;
+  refreshing: boolean;
 }) {
   const [draft, setDraft] = useState(applied);
   const colors = useRef<HTMLPreElement>(null);
   const changed = draft.trim() !== applied.trim();
 
   const apply = (text: string) => onApply(text.trim());
+  const clear = () => {
+    setDraft("");
+    apply("");
+  };
   const sync = (el: HTMLInputElement) => {
     if (colors.current) colors.current.scrollLeft = el.scrollLeft;
   };
@@ -62,33 +72,36 @@ export function FilterBar({
               }}
               onScroll={(e) => sync(e.currentTarget)}
               onKeyUp={(e) => sync(e.currentTarget)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && draft !== "") {
+                  e.preventDefault();
+                  clear();
+                }
+              }}
             />
           </div>
+          {draft !== "" && (
+            <button
+              type="button"
+              className="filterbar__clear"
+              aria-label="Clear filter"
+              title="Clear filter (Esc)"
+              onClick={clear}
+            >
+              <CloseIcon />
+            </button>
+          )}
         </div>
-        <button
-          type="button"
-          className="btn"
-          disabled={draft === "" && applied === ""}
-          onClick={() => {
-            setDraft("");
-            apply("");
-          }}
-        >
-          Clear
-        </button>
-        <button
-          type="submit"
-          className="btn btn--primary"
-          disabled={!changed && applied !== ""}
-        >
-          Apply <kbd className="filterbar__kbd">↵</kbd>
-        </button>
+        {changed ? (
+          <button type="submit" className="btn btn--primary">
+            Apply <kbd className="filterbar__kbd">↵</kbd>
+          </button>
+        ) : (
+          <button type="button" className="btn btn--icon" onClick={onRefresh}>
+            <Refresh className={refreshing ? "spin" : undefined} /> Refresh
+          </button>
+        )}
       </div>
-      <p className="filterbar__hint mono">
-        {applied === ""
-          ? "A condition, as you would write it after WHERE. Read-only, checked like the query editor."
-          : `Showing rows WHERE (${applied}) · read-only, checked like the query editor`}
-      </p>
     </form>
   );
 }

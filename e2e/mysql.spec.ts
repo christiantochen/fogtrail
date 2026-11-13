@@ -37,7 +37,9 @@ test.describe("browsing MySQL", () => {
     await expect(
       page.getByRole("heading", { name: "Pick a table to read it" }),
     ).toBeVisible();
-    await expect(page.getByText("Read-only session.")).toBeVisible();
+    await expect(
+      page.getByText("Read-only session. Fogtrail blocks writes."),
+    ).toBeVisible();
   });
 
   test("a table shows its rows, with NULL kept apart from an empty string", async ({
@@ -46,15 +48,11 @@ test.describe("browsing MySQL", () => {
     await openShop(page);
     await table(page, /^orders/).click();
     await expect(page.getByRole("heading", { name: "orders" })).toBeVisible();
-    for (const chip of [
-      "Table",
-      "InnoDB",
-      "~48,213 rows (estimate)",
-      "5 columns",
-      "Read-only",
-    ]) {
-      await expect(page.locator(".chip", { hasText: chip })).toBeVisible();
-    }
+    // The header carries no chips any more; the facts moved to the Structure tab.
+    await expect(page.locator(".chip")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Copy name" })).toHaveCount(
+      0,
+    );
     const grid = page.getByRole("table", { name: "Rows of orders" });
     await expect(
       grid.getByRole("columnheader", { name: /id bigint unsigned · PK/ }),
@@ -230,7 +228,18 @@ test.describe("browsing MySQL", () => {
     await expect(page.locator(".quick")).toHaveCount(0);
   });
 
-  test("Copy name copies database.table", async ({ page }) => {
+  test("the Structure tab holds the engine and kind that used to be chips", async ({
+    page,
+  }) => {
+    await openShop(page);
+    await table(page, /^orders/).click();
+    await page.getByRole("tab", { name: "Structure" }).click();
+    const facts = page.locator(".sqlfacts");
+    await expect(facts).toContainText("Table");
+    await expect(facts).toContainText("InnoDB");
+  });
+
+  test("Shift+Ctrl+C copies database.table", async ({ page }) => {
     await page.addInitScript(() => {
       const w = window as unknown as { __copied: string[] };
       w.__copied = [];
@@ -241,7 +250,7 @@ test.describe("browsing MySQL", () => {
     });
     await openShop(page);
     await table(page, /^orders/).click();
-    await page.getByRole("button", { name: "Copy name" }).click();
+    await page.keyboard.press("Control+Shift+C");
     expect(
       await page.evaluate(
         () => (window as unknown as { __copied: string[] }).__copied,
