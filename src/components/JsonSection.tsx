@@ -2,7 +2,10 @@ import { copyText } from "../lib/clipboard";
 import type { JsonField } from "../lib/sql";
 import { CollapseAllIcon, ExpandAllIcon, ExpandIcon } from "./Icons";
 import { JsonText } from "./JsonText";
-import { useJsonFold } from "./useJsonFold";
+import type { Range } from "../lib/find";
+import { useJsonFold, useRevealHit } from "./useJsonFold";
+
+const NONE: readonly Range[] = [];
 
 /** The fold button: one control that closes every block, then opens them again. */
 export function FoldAllButton({
@@ -34,6 +37,8 @@ export function JsonSection({
   field,
   startFolded,
   onExpand,
+  ranges = NONE,
+  current = -1,
 }: {
   name: string;
   field: JsonField;
@@ -41,8 +46,12 @@ export function JsonSection({
   startFolded: boolean;
   /** Shows the expand button, which opens this value alone in a dialog. */
   onExpand?: () => void;
+  /** Search matches in this value, and which one the search is on (-1: none here). */
+  ranges?: readonly Range[];
+  current?: number;
 }) {
   const fold = useJsonFold(field.pretty, startFolded);
+  useRevealHit(fold, field.pretty, ranges, current);
   return (
     <section className="rowjson">
       <div className="rowjson__head">
@@ -74,7 +83,12 @@ export function JsonSection({
           </button>
         )}
       </div>
-      <JsonText text={field.pretty} folding={fold.folding} />
+      <JsonText
+        text={field.pretty}
+        ranges={ranges}
+        current={current}
+        folding={fold.folding}
+      />
     </section>
   );
 }

@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ResultColumn } from "../api/types";
 import { copyText } from "../lib/clipboard";
+import { stepHit, type Range } from "../lib/find";
+import { findInRow, hitsLabel, placeOf } from "../lib/rowFind";
 import { rowTitle, splitRow, type JsonField } from "../lib/sql";
 import { FoldAllButton } from "./JsonSection";
 import { JsonText } from "./JsonText";
 import { RowBody } from "./RowBody";
-import { useJsonFold } from "./useJsonFold";
+import { useJsonFold, useRevealHit } from "./useJsonFold";
 
 const FOCUSABLE =
   "button:not(:disabled), [href], input, [tabindex]:not([tabindex='-1'])";
@@ -36,13 +38,33 @@ export function RowDialog({
 }) {
   const box = useRef<HTMLDivElement>(null);
   const close = useRef<HTMLButtonElement>(null);
-  const solo = useMemo(
+  const split = useMemo(() => splitRow(columns, row), [columns, row]);
+  const solo =
+    json === null ? undefined : split.json.find((f) => f.index === json);
+
+  // Find: kept while moving between rows, so one column can be compared across rows.
+  const [term, setTerm] = useState("");
+  const [at, setAt] = useState(0);
+  const search = useRef<HTMLInputElement>(null);
+  const hits = useMemo(
     () =>
-      json === null
-        ? undefined
-        : splitRow(columns, row).json.find((f) => f.index === json),
-    [columns, row, json],
+      solo
+        ? findInRow(columns, row, [], [solo], term)
+        : findInRow(columns, row, split.plain, split.json, term),
+    [columns, row, split, solo, term],
   );
+  const current = Math.min(at, Math.max(hits.total - 1, 0));
+  const place = placeOf(hits, current);
+  // Keep the match the search is on in view.
+  useEffect(() => {
+    box.current
+      ?.querySelector('mark[data-current="true"]')
+      ?.scrollIntoView?.({ block: "center" });
+  }, [term, current, position, hits.total]);
+  const move = (delta: number) => {
+    setAt(0);
+    onMove(delta);
+  };
 
   // Focus moves in, and goes back to where it was when the dialog closes.
   useEffect(() => {
@@ -55,6 +77,38 @@ export function RowDialog({
 
   const label = `Row ${position + 1} of ${count}`;
   const title = rowTitle(table, columns, row);
+  const searchBox = (
+    <div className="find find--dialog">
+      <input
+        ref={search}
+        type="search"
+        className="find__input"
+        aria-label="Find in row"
+        placeholder="Find in row"
+        value={term}
+        onChange={(e) => {
+          setTerm(e.target.value);
+          setAt(0);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && hits.total > 0) {
+            e.preventDefault();
+            setAt(stepHit(current, hits.total, e.shiftKey));
+          } else if (e.key === "Escape" && term !== "") {
+            // The first Esc clears the search; a second one closes the dialog.
+            e.preventDefault();
+            e.stopPropagation();
+            setTerm("");
+          }
+        }}
+      />
+      {term !== "" && (
+        <span className="find__count" role="status">
+          {hitsLabel(hits.total, current)}
+        </span>
+      )}
+    </div>
+  );
   const closeButton = (
     <button
       ref={close}
@@ -83,6 +137,14 @@ export function RowDialog({
           if (e.key === "Escape") {
             e.stopPropagation();
             onClose();
+          } else if (
+            (e.metaKey || e.ctrlKey) &&
+            !e.shiftKey &&
+            e.key.toLowerCase() === "f"
+          ) {
+            e.preventDefault();
+            search.current?.focus();
+            search.current?.select();
           } else if (e.key === "Tab" && box.current) {
             // Tab stays inside the dialog.
             const items = [
@@ -106,6 +168,9 @@ export function RowDialog({
             name={columns[solo.index].name}
             label={`${title} · ${label}`}
             closeButton={closeButton}
+            searchBox={searchBox}
+            ranges={hits.json[0]?.ranges}
+            current={place?.kind === "json" ? place.local : -1}
           />
         ) : (
           <>
@@ -119,7 +184,7 @@ export function RowDialog({
                 className="btn btn--small"
                 aria-label="Previous row"
                 disabled={position === 0}
-                onClick={() => onMove(-1)}
+                onClick={() => move(-1)}
               >
                 ↑
               </button>
@@ -128,10 +193,11 @@ export function RowDialog({
                 className="btn btn--small"
                 aria-label="Next row"
                 disabled={position >= count - 1}
-                onClick={() => onMove(1)}
+                onClick={() => move(1)}
               >
                 ↓
               </button>
+              {searchBox}
               {closeButton}
             </div>
             <RowBody
@@ -139,6 +205,7 @@ export function RowDialog({
               columns={columns}
               row={row}
               variant="dialog"
+              find={{ term, hits, current }}
             />
           </>
         )}
@@ -153,13 +220,20 @@ function SoloJson({
   name,
   label,
   closeButton,
+  searchBox,
+  ranges = [],
+  current,
 }: {
   field: JsonField;
   name: string;
   label: string;
   closeButton: React.ReactNode;
+  searchBox: React.ReactNode;
+  ranges?: readonly Range[];
+  current: number;
 }) {
   const fold = useJsonFold(field.pretty, false);
+  useRevealHit(fold, field.pretty, ranges, current);
   return (
     <>
       <div className="rowdialog__head">
@@ -175,6 +249,7 @@ function SoloJson({
             )}
           </span>
         </div>
+        {searchBox}
         <FoldAllButton fold={fold} labeled />
         <button
           type="button"
@@ -186,7 +261,12 @@ function SoloJson({
         {closeButton}
       </div>
       <div className="rowdialog__solo">
-        <JsonText text={field.pretty} folding={fold.folding} />
+        <JsonText
+          text={field.pretty}
+          ranges={ranges}
+          current={current}
+          folding={fold.folding}
+        />
       </div>
     </>
   );

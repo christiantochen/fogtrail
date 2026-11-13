@@ -619,6 +619,112 @@ test.describe("the row dialog", () => {
     );
     expect(copied[0].split("\n")).toHaveLength(4);
   });
+
+  async function openDialog(page: Page, n = 0) {
+    await openRow(page, n);
+    await panel(page)
+      .getByRole("button", { name: "Expand row in a dialog" })
+      .click();
+    return dialog(page);
+  }
+
+  test("Find in row keeps only the matching columns, marks them and counts them", async ({
+    page,
+  }) => {
+    const d = await openDialog(page);
+    const find = d.getByRole("searchbox", { name: "Find in row" });
+    await find.fill("cust");
+    await expect(d.getByRole("status")).toHaveText("1 of 1");
+    await expect(d.locator(".rowdialog__count")).toHaveText("1 of 6 match");
+    await expect(d.locator(".rowfields__item")).toHaveCount(1);
+    await expect(d.locator(".rowfields mark")).toHaveText("cust");
+    // A value matches too, not only a name.
+    await find.fill("paid");
+    await expect(d.locator(".rowfields__item")).toHaveCount(1);
+    await expect(d.locator(".rowfields__item")).toContainText("status");
+    await find.fill("zzz");
+    await expect(d.getByRole("status")).toHaveText("No matches");
+    await expect(d).toContainText("No columns match.");
+  });
+
+  test("Enter and Shift+Enter step through matches in the columns and the JSON", async ({
+    page,
+  }) => {
+    const d = await openDialog(page);
+    const find = d.getByRole("searchbox", { name: "Find in row" });
+    await find.fill("BK-");
+    // Two hits, both inside the items JSON.
+    await expect(d.getByRole("status")).toHaveText("1 of 2");
+    await expect(d.locator('mark[data-current="true"]')).toContainText("BK-");
+    await find.press("Enter");
+    await expect(d.getByRole("status")).toHaveText("2 of 2");
+    await find.press("Enter");
+    await expect(d.getByRole("status")).toHaveText("1 of 2");
+    await find.press("Shift+Enter");
+    await expect(d.getByRole("status")).toHaveText("2 of 2");
+  });
+
+  test("a hit inside a fold opens the fold", async ({ page }) => {
+    const d = await openDialog(page);
+    await d.getByRole("button", { name: "Collapse all" }).first().click();
+    await expect(d.locator(".code").first()).not.toContainText("BK-207");
+    await d.getByRole("searchbox", { name: "Find in row" }).fill("BK-207");
+    await expect(d.locator('mark[data-current="true"]')).toBeVisible();
+    await expect(d.locator(".code").first()).toContainText("BK-207");
+  });
+
+  test("Ctrl+F focuses the search, the first Esc clears it and the second closes the dialog", async ({
+    page,
+  }) => {
+    const d = await openDialog(page);
+    const find = d.getByRole("searchbox", { name: "Find in row" });
+    await expect(find).not.toBeFocused();
+    await page.keyboard.press("Control+f");
+    await expect(find).toBeFocused();
+    await page.keyboard.type("paid");
+    await expect(d.getByRole("status")).toHaveText("1 of 1");
+    await page.keyboard.press("Escape");
+    await expect(d).toBeVisible();
+    await expect(find).toHaveValue("");
+    await page.keyboard.press("Escape");
+    await expect(d).toHaveCount(0);
+  });
+
+  test("the term stays while moving between rows, and resets when the dialog closes", async ({
+    page,
+  }) => {
+    const d = await openDialog(page);
+    const find = d.getByRole("searchbox", { name: "Find in row" });
+    await find.fill("pending");
+    await expect(d.getByRole("status")).toHaveText("No matches");
+    await d.getByRole("button", { name: "Next row" }).click();
+    await expect(d).toContainText("Row 2 of 3");
+    await expect(find).toHaveValue("pending");
+    await expect(d.getByRole("status")).toHaveText("1 of 1");
+    await d.getByRole("button", { name: "Close" }).click();
+    await panel(page)
+      .getByRole("button", { name: "Expand row in a dialog" })
+      .click();
+    await expect(
+      dialog(page).getByRole("searchbox", { name: "Find in row" }),
+    ).toHaveValue("");
+  });
+
+  test("searching a single JSON value covers only that value", async ({
+    page,
+  }) => {
+    await openRow(page);
+    await panel(page)
+      .getByRole("button", { name: "Expand items in a dialog" })
+      .click();
+    const d = page.getByRole("dialog", { name: "items" });
+    const find = d.getByRole("searchbox", { name: "Find in row" });
+    await find.fill("sku");
+    await expect(d.getByRole("status")).toHaveText("1 of 2");
+    // "paid" is in the row but not in this value.
+    await find.fill("paid");
+    await expect(d.getByRole("status")).toHaveText("No matches");
+  });
 });
 
 test.describe("the database picker", () => {
