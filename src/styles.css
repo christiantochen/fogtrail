@@ -2258,9 +2258,6 @@ tr.row--fresh td {
   text-align: inherit;
   cursor: pointer;
 }
-.num .sorthead {
-  margin-left: auto;
-}
 .sorthead:hover .sqlgrid__name {
   color: var(--secondary);
 }
@@ -2507,45 +2504,48 @@ tr.row--fresh td {
 }
 
 /* Pinned columns stay at the left while the table scrolls sideways. */
+/* A heading is the sort button and, beside it, the pin: two separate targets, so the pin
+   never sits on the name. The negative margin takes back most of the pin's room from the
+   heading's own padding. */
 .colhead {
-  display: block;
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  margin-right: -6px;
+}
+.colhead > :first-child {
+  flex: 1;
+  min-width: 0;
 }
 .pinbtn {
-  position: absolute;
-  top: 5px;
-  right: 4px;
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   border: 0;
   border-radius: 5px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  opacity: 0;
+  opacity: 0.45;
 }
-.num .pinbtn {
-  right: auto;
-  left: 4px;
-}
-.sqlgrid th.pinned.num {
-  padding-right: 12px;
-  padding-left: 30px;
-}
-.sqlgrid th:hover .pinbtn,
-.pinbtn:focus-visible,
-.pinbtn--on {
+.sqlgrid th:hover .pinbtn:not(:disabled),
+.pinbtn:focus-visible:not(:disabled) {
+  background: var(--card);
+  color: var(--ink);
   opacity: 1;
 }
-.pinbtn--on {
+.pinbtn--on,
+.sqlgrid th:hover .pinbtn--on {
   color: var(--amber);
+  opacity: 1;
 }
 .pinbtn:disabled {
   cursor: not-allowed;
-  opacity: 0.4;
+  opacity: 0.25;
 }
 .sqlgrid td.pinned {
   position: sticky;
@@ -2554,7 +2554,6 @@ tr.row--fresh td {
 }
 .sqlgrid th.pinned {
   z-index: 4;
-  padding-right: 30px;
 }
 .sqlrow:hover td.pinned {
   background: linear-gradient(var(--hover), var(--hover)) var(--card);

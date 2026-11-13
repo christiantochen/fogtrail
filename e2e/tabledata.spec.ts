@@ -514,8 +514,8 @@ test.describe("a table with few columns", () => {
       .getByRole("columnheader", { name: /^kind/ })
       .boundingBox();
     const row = await grid.locator("tbody tr").first().boundingBox();
-    // The id column is as wide as its content, not stretched across the panel.
-    expect(id!.width).toBeLessThan(160);
+    // The id column is as wide as its content (and the pin's room), not stretched across the panel.
+    expect(id!.width).toBeLessThan(180);
     // The data starts at the left edge, and kind sits right next to id.
     expect(id!.x - wrap!.x).toBeLessThan(2);
     expect(kind!.x - (id!.x + id!.width)).toBeLessThan(2);
@@ -567,6 +567,35 @@ test.describe("a table with few columns", () => {
       await expect(head(page, "status")).toHaveClass(/pinned/);
       await pin(page, "status", false);
       await expect(heads.first()).toHaveAttribute("data-col", "id");
+    });
+
+    test("the pin has its own room, always shows, and never sits on the sort button", async ({
+      page,
+    }) => {
+      await openOrders(page);
+      for (const name of ["id", "status", "total", "created_at"]) {
+        const h = head(page, name);
+        const sort = h.locator(".sorthead");
+        const pinBtn = h.getByRole("button", { name: `Pin ${name}` });
+        const s = (await sort.boundingBox())!;
+        const p = (await pinBtn.boundingBox())!;
+        // Side by side, not overlapping.
+        expect(s.x + s.width).toBeLessThanOrEqual(p.x + 0.5);
+        // Visible without hovering the heading.
+        expect(
+          await pinBtn.evaluate((el) => Number(getComputedStyle(el).opacity)),
+        ).toBeGreaterThan(0.3);
+      }
+    });
+
+    test("clicking the pin pins, and does not sort", async ({ page }) => {
+      await openOrders(page);
+      await head(page, "status")
+        .getByRole("button", { name: "Pin status" })
+        .click();
+      await expect(head(page, "status")).toHaveClass(/pinned/);
+      await expect(head(page, "status")).not.toHaveAttribute("aria-sort", /.+/);
+      expect((await views(page)).at(-1)).toEqual({});
     });
 
     test("a pinned column stays put when the table scrolls sideways", async ({
