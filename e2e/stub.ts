@@ -44,10 +44,10 @@ export const mysqlProfile = {
 export async function stubBackend(
   page: Page,
   extraKeys: string[] = [],
-  options: { mysql?: boolean } = {},
+  options: { mysql?: boolean; extraSchemas?: number } = {},
 ) {
   await page.addInitScript(
-    ([base, extra, mysql]) => {
+    ([base, extra, mysql, extraSchemas]) => {
       const profiles = mysql ? [...base, mysql] : [...base];
       const keys = [
         ...extra,
@@ -288,6 +288,10 @@ export async function stubBackend(
             }
             case "list_schemas":
               return [
+                ...Array.from({ length: extraSchemas }, (_, i) => ({
+                  name: `archive_${String(i).padStart(2, "0")}`,
+                  system: false,
+                })),
                 { name: "analytics", system: false },
                 { name: "information_schema", system: true },
                 { name: "mysql", system: true },
@@ -657,6 +661,11 @@ export async function stubBackend(
         },
       };
     },
-    [profiles, extraKeys, options.mysql ? mysqlProfile : null] as const,
+    [
+      profiles,
+      extraKeys,
+      options.mysql ? mysqlProfile : null,
+      options.extraSchemas ?? 0,
+    ] as const,
   );
 }
