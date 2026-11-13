@@ -1,7 +1,21 @@
-import { useMemo } from "react";
+import { Fragment, useMemo } from "react";
 import type { ResultColumn } from "../api/types";
 import { splitRow } from "../lib/sql";
 import { JsonSection } from "./JsonSection";
+
+/** A column name that wraps after an underscore, not in the middle of a word. */
+function Breakable({ name }: { name: string }) {
+  return name.split("_").map((part, i) => (
+    <Fragment key={i}>
+      {i > 0 && (
+        <>
+          _<wbr />
+        </>
+      )}
+      {part}
+    </Fragment>
+  ));
+}
 
 /**
  * What a row holds: its plain columns as a list, then its JSON values. The side panel and the
@@ -27,7 +41,9 @@ export function RowBody({
     <dl className="rowfields">
       {plain.map((i) => (
         <div key={columns[i].name} className="rowfields__item">
-          <dt className="mono">{columns[i].name}</dt>
+          <dt className="mono">
+            <Breakable name={columns[i].name} />
+          </dt>
           {row[i] === null ? (
             <dd className="mono sqlgrid__null">NULL</dd>
           ) : (
@@ -59,8 +75,11 @@ export function RowBody({
       className={`rowdialog__body${json.length === 0 ? " rowdialog__body--plain" : ""}`}
     >
       <div className="rowdialog__fields">
-        <div className="section-label">Columns</div>
-        {list}
+        <div className="rowdialog__fieldshead">
+          <span className="section-label">Columns</span>
+          <span className="rowdialog__count">{columns.length}</span>
+        </div>
+        <div className="rowdialog__fieldsbody">{list}</div>
       </div>
       {json.length > 0 && <div className="rowdialog__json">{sections}</div>}
     </div>

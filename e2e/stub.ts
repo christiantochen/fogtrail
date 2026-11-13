@@ -301,6 +301,7 @@ export async function stubBackend(
                 { name: "events", kind: "table", estimatedRows: 250 },
                 { name: "orders", kind: "table", estimatedRows: 48213 },
                 { name: "paying_customers", kind: "view", estimatedRows: null },
+                { name: "settings", kind: "table", estimatedRows: 1 },
                 { name: "weird name", kind: "table", estimatedRows: 1 },
               ];
             }
@@ -472,6 +473,49 @@ export async function stubBackend(
                   );
                 }
                 return { columns, rows, offset: 0, hasMore: false };
+              }
+              if (a.table === "settings") {
+                // Many columns with long names and no JSON: the row dialog has to lay them out.
+                const names = [
+                  "id",
+                  "name",
+                  "rbac_role_level_id",
+                  "merchant_key",
+                  "tax_inclusive_mode",
+                  "is_rounding_generate_confirm",
+                  "organization_partner_id",
+                  "loyalty_mobile_app_store_listing",
+                  "loyalty_mobile_app_ordering",
+                  "chain_display_mode_id",
+                  "gst_registration_number",
+                  "default_crm_ui",
+                  "time_format",
+                  "smart_qrcode",
+                  "is_batch_order",
+                  "is_churned",
+                  "churn_reason_id",
+                  "country_region",
+                  "partner_code",
+                  "vibe_mode",
+                  "location",
+                  "address",
+                  "lat",
+                  "lon",
+                ];
+                const value = (n: string) =>
+                  n === "location"
+                    ? "Opposite Sample Park, Example Road, Example District, Singapore, Central, 000000, Singapore"
+                    : n === "name"
+                      ? "Harbor Books"
+                      : n === "partner_code" || n === "vibe_mode"
+                        ? null
+                        : "1";
+                return {
+                  columns: names.map((name) => ({ name, typeName: "VARCHAR" })),
+                  rows: [names.map(value)],
+                  offset: 0,
+                  hasMore: false,
+                };
               }
               // `events` is long enough to page: 250 rows, 100 per page.
               const total = a.table === "events" ? 250 : 0;

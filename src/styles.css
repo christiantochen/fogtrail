@@ -2448,18 +2448,44 @@ tr.row--fresh td {
 }
 .rowdialog__fields {
   flex: none;
-  width: 320px;
-  padding: 16px 0 0;
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border-right: 1px solid var(--border-soft);
+}
+.rowdialog__fieldshead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 6px;
+}
+.rowdialog__count {
+  color: var(--muted);
+  font-size: 12px;
+}
+.rowdialog__fieldsbody {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
+  padding-bottom: 8px;
 }
-.rowdialog__fields .section-label {
-  padding: 0 16px;
-}
-.rowdialog__fields .rowfields {
-  grid-template-columns: 104px 1fr;
-  gap: 8px 12px;
+/* The columns flow into as many columns as fit, so a wide table reads across, not down. */
+.rowdialog .rowfields {
+  display: block;
+  column-width: 340px;
+  column-gap: 0;
+  column-rule: 1px solid var(--border-soft);
+  padding: 0;
   border-bottom: 0;
+}
+.rowdialog .rowfields__item {
+  display: grid;
+  grid-template-columns: var(--label, 150px) 1fr;
+  gap: 12px;
+  padding: 5px 16px;
+  break-inside: avoid;
 }
 .rowdialog__json {
   flex: 1;
@@ -2469,6 +2495,9 @@ tr.row--fresh td {
 .rowdialog__json .rowjson__head,
 .rowdialog__json .rowjson .code {
   padding-right: 20px;
+}
+.rowdialog__body--plain {
+  --label: 180px;
 }
 .rowdialog__body--plain .rowdialog__fields {
   width: auto;
@@ -2493,13 +2522,11 @@ tr.row--fresh td {
   }
   .rowdialog__fields {
     width: auto;
-    padding-bottom: 4px;
     border-right: 0;
     border-bottom: 1px solid var(--border-soft);
-    overflow: visible;
   }
-  .rowdialog__fields .rowfields {
-    grid-template-columns: 96px 1fr 96px 1fr;
+  .rowdialog__fieldsbody {
+    overflow: visible;
   }
   .rowdialog__json {
     overflow: visible;
