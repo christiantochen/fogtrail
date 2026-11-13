@@ -417,6 +417,7 @@ export async function stubBackend(
                   { name: "notes", typeName: "VARCHAR" },
                   { name: "items", typeName: "JSON" },
                   { name: "created_at", typeName: "TIMESTAMP" },
+                  { name: "meta", typeName: "TEXT" },
                 ];
                 let rows: (string | null)[][] = [
                   [
@@ -427,6 +428,8 @@ export async function stubBackend(
                     null,
                     '[{"sku":"BK-114","qty":2},{"sku":"BK-207","qty":1}]',
                     "2026-11-11 09:42:07",
+                    // A text column that holds JSON.
+                    '{"source":"web","coupon":"SPRING"}',
                   ],
                   [
                     "48212",
@@ -436,6 +439,8 @@ export async function stubBackend(
                     "Leave at front desk",
                     '{"gift":true}',
                     "2026-11-10 19:27:03",
+                    // Plain words in a text column stay plain.
+                    "called twice",
                   ],
                   [
                     "48211",
@@ -445,6 +450,7 @@ export async function stubBackend(
                     "",
                     "[]",
                     "2026-11-09 12:18:42",
+                    "",
                   ],
                 ];
                 if (/nomatch/.test(filter)) rows = [];

@@ -156,6 +156,69 @@ export function prettyJson(text: string): string | null {
   }
 }
 
+/** True for a text column: TEXT in its sizes, VARCHAR and CHAR. */
+export function isTextType(typeName: string): boolean {
+  return /TEXT|CHAR/i.test(typeName);
+}
+
+/** The longest text column value that is checked for JSON; bigger ones stay plain text. */
+export const TEXT_JSON_LIMIT = 200_000;
+
+/** A value that is shown as JSON in the row views, and where it came from. */
+export interface JsonField {
+  /** Index of the column in the row. */
+  index: number;
+  /** The value laid out over several lines. */
+  pretty: string;
+  /** A JSON column, or a text column that happens to hold a JSON object or array. */
+  source: "json" | "text";
+}
+
+/**
+ * The JSON to show for one value. A JSON column always counts. A text column counts only
+ * when the whole value is a JSON object or array, so "12" or a quoted word stays plain.
+ */
+export function jsonOf(
+  typeName: string,
+  value: string | null,
+): { pretty: string; source: JsonField["source"] } | null {
+  if (value === null) return null;
+  if (isJsonType(typeName)) {
+    const pretty = prettyJson(value);
+    return pretty ? { pretty, source: "json" } : null;
+  }
+  if (!isTextType(typeName) || value.length > TEXT_JSON_LIMIT) return null;
+  const t = value.trim();
+  if (!(t.startsWith("{") || t.startsWith("["))) return null;
+  const pretty = prettyJson(t);
+  return pretty ? { pretty, source: "text" } : null;
+}
+
+/** What a row is called in the row views: "orders · id 48213", or just the table without an id. */
+export function rowTitle(
+  table: string,
+  columns: { name: string }[],
+  row: (string | null)[],
+): string {
+  const id = columns.findIndex((c) => c.name === "id");
+  return id >= 0 && row[id] !== null ? `${table} · id ${row[id]}` : table;
+}
+
+/** Splits a row into the columns shown as a list and the ones shown as JSON. */
+export function splitRow(
+  columns: { name: string; typeName: string }[],
+  row: (string | null)[],
+): { plain: number[]; json: JsonField[] } {
+  const plain: number[] = [];
+  const json: JsonField[] = [];
+  columns.forEach((c, index) => {
+    const found = jsonOf(c.typeName, row[index]);
+    if (found) json.push({ index, ...found });
+    else plain.push(index);
+  });
+  return { plain, json };
+}
+
 /** A date and a time apart, so the date reads first: "2026-11-11 08:51:20" gives both halves. */
 export function splitTimestamp(text: string): [string, string] | null {
   const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/.exec(text);

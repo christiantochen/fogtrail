@@ -30,6 +30,7 @@ import { FilterBar } from "./FilterBar";
 import { Lock, Refresh } from "./Icons";
 import { PinButton } from "./PinButton";
 import { useColumnPins } from "./useColumnPins";
+import { RowDialog } from "./RowDialog";
 import { RowPanel } from "./RowPanel";
 
 /** One table or view: its rows and its structure. */
@@ -254,6 +255,8 @@ function DataGrid({
   onOffset: (offset: number) => void;
 }) {
   const [open, setOpen] = useState<number | null>(null);
+  // The row dialog: on the whole row (json null) or on one column's JSON.
+  const [dialog, setDialog] = useState<{ json: number | null } | null>(null);
   const pinned = useUi((s) => s.sqlPinned);
   const togglePinned = useUi((s) => s.togglePinnedColumn);
   const tableRef = useRef<HTMLTableElement>(null);
@@ -360,6 +363,15 @@ function DataGrid({
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       setOpen(r);
+                    } else if (
+                      e.key === "e" &&
+                      !e.metaKey &&
+                      !e.ctrlKey &&
+                      !e.altKey
+                    ) {
+                      e.preventDefault();
+                      setOpen(r);
+                      setDialog({ json: null });
                     } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                       e.preventDefault();
                       rowRefs.current[
@@ -443,6 +455,19 @@ function DataGrid({
             setOpen(null);
             rowRefs.current[was]?.focus();
           }}
+          onExpand={(json) => setDialog({ json })}
+        />
+      )}
+      {dialog && open !== null && page.rows[open] && (
+        <RowDialog
+          table={table}
+          columns={page.columns}
+          row={page.rows[open]}
+          position={open}
+          count={page.rows.length}
+          json={dialog.json}
+          onMove={move}
+          onClose={() => setDialog(null)}
         />
       )}
     </div>

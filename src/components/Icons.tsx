@@ -79,3 +79,24 @@ export const Pin = (p: SVGProps<SVGSVGElement>) => (
     <path d="M9 3h6l-1 6 3 4H7l3-4z" />
   </svg>
 );
+
+/** Two arrows pointing out of a box: show this bigger. */
+export const ExpandIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+  </svg>
+);
+
+/** Chevrons closing in: fold every block. */
+export const CollapseAllIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="m7 20 5-5 5 5M7 4l5 5 5-5" />
+  </svg>
+);
+
+/** Chevrons opening out: unfold every block. */
+export const ExpandAllIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="m7 15 5 5 5-5M7 9l5-5 5 5" />
+  </svg>
+);

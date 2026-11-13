@@ -199,10 +199,173 @@ test.describe("the row panel", () => {
     await expect(panel).toContainText("orders · id 48213");
     await expect(panel.getByText("184.50")).toBeVisible();
     await expect(panel.getByText("NULL")).toBeVisible();
-    // The JSON is spread over lines, not one string.
-    await expect(panel.locator(".code")).toContainText('"sku": "BK-114"');
+    // The JSON is folded one level: the items are there, their fields are not.
+    const code = panel.locator(".code").first();
+    await expect(code).toContainText("2 fields");
+    await expect(code).not.toContainText('"sku"');
+    await code.getByRole("button", { name: "Expand block" }).first().click();
+    await expect(code).toContainText('"sku": "BK-114"');
     await page.keyboard.press("Escape");
     await expect(panel).toHaveCount(0);
+  });
+
+  test("a text column that holds JSON is shown as JSON, plain words are not", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    const rows = page
+      .getByRole("table", { name: "Rows of orders" })
+      .locator("tbody tr");
+    const panel = page.getByRole("complementary", { name: "Row details" });
+    await rows.nth(0).click();
+    const meta = panel.locator("section.rowjson").filter({ hasText: "meta" });
+    await expect(meta).toContainText("json detected");
+    await expect(meta.locator(".code")).toContainText('"source": "web"');
+    // The grid cell is still plain text.
+    await expect(rows.nth(0).locator(".jchip")).toHaveCount(1);
+    await rows.nth(1).click();
+    await expect(panel.locator("section.rowjson")).toHaveCount(1);
+    await expect(panel).toContainText("called twice");
+    await expect(panel).not.toContainText("json detected");
+  });
+
+  test("Collapse all folds the blocks and Expand all opens them again", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    const rows = page
+      .getByRole("table", { name: "Rows of orders" })
+      .locator("tbody tr");
+    await rows.nth(0).click();
+    const panel = page.getByRole("complementary", { name: "Row details" });
+    const items = panel.locator("section.rowjson").first();
+    await items.getByRole("button", { name: "Expand all" }).click();
+    await expect(items.locator(".code")).toContainText('"sku": "BK-207"');
+    await items.getByRole("button", { name: "Collapse all" }).click();
+    await expect(items.locator(".code")).not.toContainText('"sku"');
+  });
+});
+
+test.describe("the row dialog", () => {
+  const dialog = (page: Page) =>
+    page.getByRole("dialog", { name: "Row details" });
+  const panel = (page: Page) =>
+    page.getByRole("complementary", { name: "Row details" });
+
+  async function openRow(page: Page, n = 0) {
+    await openOrders(page);
+    await page
+      .getByRole("table", { name: "Rows of orders" })
+      .locator("tbody tr")
+      .nth(n)
+      .click();
+  }
+
+  test("Expand opens the whole row with its JSON open, and Esc closes the dialog before the panel", async ({
+    page,
+  }) => {
+    await openRow(page);
+    await panel(page)
+      .getByRole("button", { name: "Expand row in a dialog" })
+      .click();
+    const d = dialog(page);
+    await expect(d).toBeVisible();
+    await expect(d).toContainText("Row 1 of 3");
+    await expect(d).toContainText("orders · id 48213");
+    await expect(d.getByText("184.50")).toBeVisible();
+    // Opened in full: no fold clicks needed.
+    await expect(d.locator(".code").first()).toContainText('"sku": "BK-207"');
+    await expect(d.getByRole("button", { name: "Close" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(d).toHaveCount(0);
+    // The panel is still there, and focus went back to the button that opened the dialog.
+    await expect(panel(page)).toBeVisible();
+    await expect(
+      panel(page).getByRole("button", { name: "Expand row in a dialog" }),
+    ).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(panel(page)).toHaveCount(0);
+  });
+
+  test("the arrows move between rows inside the dialog", async ({ page }) => {
+    await openRow(page);
+    await panel(page)
+      .getByRole("button", { name: "Expand row in a dialog" })
+      .click();
+    const d = dialog(page);
+    await expect(
+      d.getByRole("button", { name: "Previous row" }),
+    ).toBeDisabled();
+    await d.getByRole("button", { name: "Next row" }).click();
+    await expect(d).toContainText("Row 2 of 3");
+    await expect(d).toContainText("orders · id 48212");
+    await expect(d.locator(".code").first()).toContainText('"gift": true');
+  });
+
+  test("E opens the dialog from the panel and from a focused row", async ({
+    page,
+  }) => {
+    await openRow(page);
+    await panel(page).getByRole("button", { name: "Next row" }).focus();
+    await page.keyboard.press("e");
+    await expect(dialog(page)).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    const row = page
+      .getByRole("table", { name: "Rows of orders" })
+      .locator("tbody tr")
+      .nth(1);
+    await row.focus();
+    await row.press("e");
+    await expect(dialog(page)).toContainText("orders · id 48212");
+  });
+
+  test("a JSON value opens alone, and the fold button works there", async ({
+    page,
+  }) => {
+    await openRow(page);
+    await panel(page)
+      .getByRole("button", { name: "Expand items in a dialog" })
+      .click();
+    const d = page.getByRole("dialog", { name: "items" });
+    await expect(d).toBeVisible();
+    await expect(d).toContainText("orders · id 48213 · Row 1 of 3");
+    await expect(d.locator(".code")).toContainText('"sku": "BK-114"');
+    await expect(d).not.toContainText("184.50");
+    await d.getByRole("button", { name: "Collapse all" }).click();
+    await expect(d.locator(".code")).not.toContainText('"sku"');
+    await d.getByRole("button", { name: "Expand all" }).click();
+    await expect(d.locator(".code")).toContainText('"sku": "BK-207"');
+    await page.keyboard.press("Escape");
+    await expect(d).toHaveCount(0);
+  });
+
+  test("a click outside closes it, and Tab stays inside", async ({ page }) => {
+    await openRow(page);
+    await panel(page)
+      .getByRole("button", { name: "Expand row in a dialog" })
+      .click();
+    const d = dialog(page);
+    for (let i = 0; i < 12; i++) await page.keyboard.press("Tab");
+    expect(
+      await page.evaluate(
+        () => document.activeElement?.closest('[role="dialog"]') !== null,
+      ),
+    ).toBe(true);
+    await page.mouse.click(5, 5);
+    await expect(d).toHaveCount(0);
+  });
+
+  test("a row without JSON still opens, with its columns in one list", async ({
+    page,
+  }) => {
+    await openRow(page, 2);
+    await panel(page)
+      .getByRole("button", { name: "Expand row in a dialog" })
+      .click();
+    const d = dialog(page);
+    await expect(d).toContainText("orders · id 48211");
+    await expect(d.locator(".code")).toHaveCount(1);
   });
 
   test("the arrows move between rows, and stop at the ends", async ({
@@ -256,7 +419,7 @@ test.describe("the row panel", () => {
     );
     expect(copied).toHaveLength(1);
     expect(copied[0].split("\n")[0]).toBe(
-      "id\tcustomer_id\tstatus\ttotal\tnotes\titems\tcreated_at",
+      "id\tcustomer_id\tstatus\ttotal\tnotes\titems\tcreated_at\tmeta",
     );
     expect(copied[0].split("\n")).toHaveLength(4);
   });
