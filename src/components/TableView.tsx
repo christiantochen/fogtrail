@@ -28,6 +28,7 @@ import { useUi } from "../state/ui";
 import { FilterBar } from "./FilterBar";
 import { PinButton } from "./PinButton";
 import { useColumnPins } from "./useColumnPins";
+import { useDelayedFlag } from "./useDelayedFlag";
 import { RowDialog } from "./RowDialog";
 import { RowPanel } from "./RowPanel";
 
@@ -122,6 +123,10 @@ function Data({
   const q = useRows(schema, table, offset, view);
 
   const qc = useQueryClient();
+  // While a new page, sort or filter loads, the old rows stay (so the table never blanks),
+  // and they are "stale": they can't be opened or copied. The look of loading waits 200 ms.
+  const stale = q.isPlaceholderData;
+  const loading = useDelayedFlag(q.isFetching, 200);
   const bar = (
     <FilterBar
       key={table}
@@ -187,6 +192,8 @@ function Data({
         onSort={setSort}
         offset={offset}
         fetching={q.isFetching}
+        stale={stale}
+        loading={loading}
         onOffset={setOffset}
       />
     </>
@@ -202,6 +209,8 @@ function DataGrid({
   onSort,
   offset,
   fetching,
+  stale,
+  loading,
   onOffset,
 }: {
   table: string;
@@ -212,6 +221,10 @@ function DataGrid({
   onSort: (sort: { column: string; desc: boolean } | null) => void;
   offset: number;
   fetching: boolean;
+  /** These rows belong to the previous page, sort or filter. */
+  stale: boolean;
+  /** A load has been running long enough to show it. */
+  loading: boolean;
   onOffset: (offset: number) => void;
 }) {
   const [open, setOpen] = useState<number | null>(null);
@@ -237,11 +250,15 @@ function DataGrid({
   return (
     <div className="sqldata">
       <div className="sqldata__main">
-        <div className="table-wrap sqlwrap">
+        {loading && <div className="loadbar" aria-hidden="true" />}
+        <div
+          className={`table-wrap sqlwrap${loading && stale ? " sqlwrap--loading" : ""}`}
+        >
           <table
             ref={tableRef}
             className="sqlgrid"
             aria-label={`Rows of ${table}`}
+            aria-busy={stale}
           >
             <thead>
               <tr>
@@ -290,6 +307,12 @@ function DataGrid({
                                 {active.desc ? "↓" : "↑"}
                               </span>
                             )}
+                            {active && loading && (
+                              <span
+                                className="sorthead__spin"
+                                aria-hidden="true"
+                              />
+                            )}
                           </span>
                           <span className="sqlgrid__sub mono">
                             {columnSub(c, info.get(c.name))}
@@ -318,8 +341,12 @@ function DataGrid({
                   tabIndex={0}
                   className={open === r ? "sqlrow sqlrow--open" : "sqlrow"}
                   aria-current={open === r ? "true" : undefined}
-                  onClick={() => setOpen(r)}
+                  onClick={() => {
+                    if (!stale) setOpen(r);
+                  }}
                   onKeyDown={(e) => {
+                    if (stale && e.key !== "ArrowDown" && e.key !== "ArrowUp")
+                      return;
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       setOpen(r);
@@ -365,8 +392,14 @@ function DataGrid({
         </div>
         <div className="sqlfoot">
           <span>
-            {filtered ? "Filtered · " : ""}
-            {rangeLabel(page.offset, page.rows.length)}
+            {loading ? (
+              "Loading…"
+            ) : (
+              <>
+                {filtered ? "Filtered · " : ""}
+                {rangeLabel(page.offset, page.rows.length)}
+              </>
+            )}
           </span>
           {live.length >= MAX_PINS && (
             <span className="sqlfoot__note">
@@ -377,7 +410,7 @@ function DataGrid({
           <button
             type="button"
             className="btn btn--small"
-            disabled={page.rows.length === 0}
+            disabled={page.rows.length === 0 || stale}
             onClick={() =>
               void copyText(resultToTsv(page.columns, page.rows), "rows")
             }

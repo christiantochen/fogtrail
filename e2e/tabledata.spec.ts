@@ -221,6 +221,85 @@ test.describe("the WHERE filter", () => {
   });
 });
 
+test.describe("loading a new sort", () => {
+  const slow = (page: Page, ms: number) =>
+    page.evaluate((n) => {
+      (window as unknown as { __rowDelay: number }).__rowDelay = n;
+    }, ms);
+  const totalHead = (page: Page) =>
+    page
+      .getByRole("table", { name: "Rows of orders" })
+      .locator('thead th[data-col="total"] .sorthead');
+
+  test("a slow load dims the old rows, shows progress, and blocks opening and copying them", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    await slow(page, 1500);
+    await totalHead(page).click();
+    // After a short wait: a progress bar, dimmed rows, a spinner by the arrow, and a footer note.
+    await expect(page.locator(".loadbar")).toBeVisible();
+    await expect(page.locator(".sqlwrap--loading")).toBeVisible();
+    await expect(totalHead(page).locator(".sorthead__spin")).toBeVisible();
+    await expect(page.getByText("Loading…")).toBeVisible();
+    await expect(
+      page.getByRole("table", { name: "Rows of orders" }),
+    ).toHaveAttribute("aria-busy", "true");
+    // The old rows can't be opened or copied, and the page buttons are off.
+    await page
+      .getByRole("table", { name: "Rows of orders" })
+      .locator("tbody tr")
+      .first()
+      .click();
+    await expect(
+      page.getByRole("complementary", { name: "Row details" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Copy rows" }),
+    ).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Next 100" })).toBeDisabled();
+    // When it arrives everything is back, and rows open again.
+    await expect(page.locator(".loadbar")).toHaveCount(0, { timeout: 5000 });
+    await expect(page.getByText("Rows 1–3")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Copy rows" })).toBeEnabled();
+    await page
+      .getByRole("table", { name: "Rows of orders" })
+      .locator("tbody tr")
+      .first()
+      .click();
+    await expect(
+      page.getByRole("complementary", { name: "Row details" }),
+    ).toBeVisible();
+  });
+
+  test("a quick load shows nothing, so it does not flicker", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    await page.evaluate(() => {
+      const w = window as unknown as { __sawBar: boolean };
+      w.__sawBar = false;
+      new MutationObserver(() => {
+        if (document.querySelector(".loadbar")) w.__sawBar = true;
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+    await slow(page, 50);
+    await totalHead(page).click();
+    await expect(
+      page
+        .getByRole("table", { name: "Rows of orders" })
+        .locator('thead th[data-col="total"]'),
+    ).toHaveAttribute("aria-sort", "ascending");
+    await page.waitForTimeout(500);
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { __sawBar: boolean }).__sawBar,
+      ),
+    ).toBe(false);
+    await expect(page.getByText("Rows 1–3")).toBeVisible();
+  });
+});
+
 test.describe("the row panel", () => {
   test("a click opens the row, JSON is laid out, Esc closes it", async ({
     page,
