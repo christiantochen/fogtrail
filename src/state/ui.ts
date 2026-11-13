@@ -34,6 +34,9 @@ interface UiState {
   /** What splits key names into folders. Empty means a flat list. */
   delimiter: string;
   setDelimiter: (value: string) => void;
+  /** The row dialog's "Hide null" checkbox. Kept while the app runs, not saved. */
+  hideNull: boolean;
+  setHideNull: (value: boolean) => void;
   /** The live connection, or null when there is none. */
   connected: ConnectionInfo | null;
   /** Saved profile the live connection came from. */
@@ -132,6 +135,8 @@ export const useUi = create<UiState>((set) => ({
     }
     set({ delimiter, expanded: new Set() });
   },
+  hideNull: false,
+  setHideNull: (hideNull) => set({ hideNull }),
   connected: null,
   connectedId: null,
   quickOpen: false,

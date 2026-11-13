@@ -2464,11 +2464,6 @@ tr.row--fresh td {
   box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
   overflow: hidden;
 }
-.rowdialog--solo {
-  width: min(900px, 100%);
-  height: auto;
-  max-height: 100%;
-}
 .rowdialog__head {
   flex: none;
   display: flex;
@@ -2495,14 +2490,7 @@ tr.row--fresh td {
   flex: 1;
   min-height: 0;
   display: flex;
-}
-.rowdialog__fields {
-  flex: none;
-  width: 360px;
-  display: flex;
   flex-direction: column;
-  min-height: 0;
-  border-right: 1px solid var(--border-soft);
 }
 .rowdialog__fieldshead {
   flex: none;
@@ -2516,6 +2504,20 @@ tr.row--fresh td {
 }
 .find--dialog .find__input {
   width: 240px;
+}
+.rowdialog__check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 4px;
+  color: var(--secondary);
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.rowdialog__check input {
+  margin: 0;
+  accent-color: var(--amber);
 }
 .rowdialog__none {
   margin: 0;
@@ -2543,29 +2545,76 @@ tr.row--fresh td {
 }
 .rowdialog .rowfields__item {
   display: grid;
-  grid-template-columns: var(--label, 150px) 1fr;
+  grid-template-columns: 150px 1fr;
+  align-items: center;
   gap: 12px;
   padding: 5px 16px;
+  border-bottom: 1px solid var(--border-soft);
   break-inside: avoid;
 }
-.rowdialog__json {
-  flex: 1;
-  min-width: 0;
-  overflow: auto;
+.rowdialog .rowfields__item:hover {
+  background: var(--hover);
 }
-.rowdialog__json .rowjson__head,
-.rowdialog__json .rowjson .code {
-  padding-right: 20px;
+.rowdialog .rowfields dd {
+  font-size: 13px;
 }
-.rowdialog__body--plain {
-  --label: 180px;
+.rowfields__dim {
+  opacity: 0.6;
 }
-.rowdialog__body--plain .rowdialog__fields {
-  width: auto;
-  flex: 1;
-  border-right: 0;
+/* A null cell: a small quiet chip. Under a search it takes the highlight, whole. */
+.nullchip {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.3px;
+}
+.nullchip--hit {
+  border-color: transparent;
+  background: #fbe7b5;
+  color: #18212b;
+}
+.nullchip--current {
+  background: #f2b33d;
+}
+/* A JSON value in the list: what it holds, any matches inside it, and a button to open it. */
+.jsonchip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.jsonchip__what {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 5px;
+  background: var(--chip);
+  color: var(--chip-ink);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.jsonchip__match {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 5px;
+  background: #fbe7b5;
+  color: #18212b;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.jsonchip__match--current {
+  background: #f2b33d;
 }
 .rowdialog__solo {
+  flex: 1;
   min-height: 0;
   overflow: auto;
   padding: 14px 20px 14px 8px;
@@ -2574,24 +2623,6 @@ tr.row--fresh td {
   margin: 0;
   max-height: none;
   padding: 0;
-}
-/* A narrow window: the columns go above the JSON in two columns. */
-@media (max-width: 960px) {
-  .rowdialog__body {
-    flex-direction: column;
-    overflow: auto;
-  }
-  .rowdialog__fields {
-    width: auto;
-    border-right: 0;
-    border-bottom: 1px solid var(--border-soft);
-  }
-  .rowdialog__fieldsbody {
-    overflow: visible;
-  }
-  .rowdialog__json {
-    overflow: visible;
-  }
 }
 
 /* Pinned columns stay at the left while the table scrolls sideways. */

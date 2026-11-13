@@ -460,6 +460,7 @@ function DataGrid({
           count={page.rows.length}
           json={dialog.json}
           onMove={move}
+          onJson={(json) => setDialog({ json })}
           onClose={() => setDialog(null)}
         />
       )}

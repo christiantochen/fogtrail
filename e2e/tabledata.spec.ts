@@ -378,7 +378,7 @@ test.describe("the row dialog", () => {
       .click();
   }
 
-  test("Expand opens the whole row with its JSON open, and Esc closes the dialog before the panel", async ({
+  test("Expand opens the whole row with its JSON as chips, and Esc closes the dialog before the panel", async ({
     page,
   }) => {
     await openRow(page);
@@ -390,8 +390,9 @@ test.describe("the row dialog", () => {
     await expect(d).toContainText("Row 1 of 3");
     await expect(d).toContainText("orders · id 48213");
     await expect(d.getByText("184.50")).toBeVisible();
-    // Opened in full: no fold clicks needed.
-    await expect(d.locator(".code").first()).toContainText('"sku": "BK-207"');
+    // JSON is a chip with an Open button, not laid out in the list.
+    await expect(d.locator(".jsonchip").first()).toContainText("[ ] 2 items");
+    await expect(d.locator(".code")).toHaveCount(0);
     await expect(d.getByRole("button", { name: "Close" })).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(d).toHaveCount(0);
@@ -416,7 +417,31 @@ test.describe("the row dialog", () => {
     await d.getByRole("button", { name: "Next row" }).click();
     await expect(d).toContainText("Row 2 of 3");
     await expect(d).toContainText("orders · id 48212");
-    await expect(d.locator(".code").first()).toContainText('"gift": true');
+    await expect(d.locator(".jsonchip").first()).toContainText("{ } 1 key");
+  });
+
+  test("the up and down keys move between rows, except while typing in a box", async ({
+    page,
+  }) => {
+    await openRow(page);
+    await panel(page)
+      .getByRole("button", { name: "Expand row in a dialog" })
+      .click();
+    const d = dialog(page);
+    await page.keyboard.press("ArrowDown");
+    await expect(d).toContainText("Row 2 of 3");
+    // Also with focus on plain text, and the page keeps its place.
+    await d.getByText("62.00").click();
+    await page.keyboard.press("ArrowDown");
+    await expect(d).toContainText("Row 3 of 3");
+    await page.keyboard.press("ArrowDown");
+    await expect(d).toContainText("Row 3 of 3");
+    await page.keyboard.press("ArrowUp");
+    await expect(d).toContainText("Row 2 of 3");
+    // In the find box the keys belong to the box.
+    await d.getByRole("searchbox", { name: "Find in row" }).focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(d).toContainText("Row 2 of 3");
   });
 
   test("E opens the dialog from the panel and from a focused row", async ({
@@ -437,7 +462,7 @@ test.describe("the row dialog", () => {
     await expect(dialog(page)).toContainText("orders · id 48212");
   });
 
-  test("a JSON value opens alone, and the fold button works there", async ({
+  test("a JSON value opens alone from the side panel, the fold button works there, and Esc steps back", async ({
     page,
   }) => {
     await openRow(page);
@@ -453,8 +478,33 @@ test.describe("the row dialog", () => {
     await expect(d.locator(".code")).not.toContainText('"sku"');
     await d.getByRole("button", { name: "Expand all" }).click();
     await expect(d.locator(".code")).toContainText('"sku": "BK-207"');
+    // Esc goes back to the whole row first, and a second Esc closes the dialog.
     await page.keyboard.press("Escape");
-    await expect(d).toHaveCount(0);
+    await expect(dialog(page)).toBeVisible();
+    await expect(dialog(page)).toContainText("184.50");
+    await page.keyboard.press("Escape");
+    await expect(dialog(page)).toHaveCount(0);
+  });
+
+  test("Open on a JSON chip shows that value on its own, and Back to row returns with focus on its Open button", async ({
+    page,
+  }) => {
+    await openRow(page);
+    await panel(page)
+      .getByRole("button", { name: "Expand row in a dialog" })
+      .click();
+    const d = dialog(page);
+    await d.locator('[data-open="5"]').click();
+    const solo = page.getByRole("dialog", { name: "items" });
+    await expect(solo.locator(".code")).toContainText('"sku": "BK-207"');
+    await expect(
+      solo.getByRole("button", { name: "Back to row" }),
+    ).toBeFocused();
+    // No row arrows on one value on its own.
+    await expect(solo.getByRole("button", { name: "Next row" })).toHaveCount(0);
+    await solo.getByRole("button", { name: "Back to row" }).click();
+    await expect(dialog(page)).toBeVisible();
+    await expect(dialog(page).locator('[data-open="5"]')).toBeFocused();
   });
 
   test("a click outside closes it, and Tab stays inside", async ({ page }) => {
@@ -538,7 +588,7 @@ test.describe("the row dialog", () => {
     expect(fits).toBe(true);
   });
 
-  test("with JSON the columns list is a fixed 360px side and names still break cleanly", async ({
+  test("with JSON the columns are one full-width list in table order, and names still break cleanly", async ({
     page,
   }) => {
     await openRow(page);
@@ -546,13 +596,57 @@ test.describe("the row dialog", () => {
       .getByRole("button", { name: "Expand row in a dialog" })
       .click();
     const d = dialog(page);
-    const box = await d.locator(".rowdialog__fields").boundingBox();
-    expect(Math.round(box!.width)).toBe(360);
     await expect(d.locator(".rowdialog__count")).toHaveText("8");
+    const names = await d.locator(".rowfields dt").allTextContents();
+    expect(names.map((n) => n.replace(/\u200b/g, ""))).toEqual([
+      "id",
+      "customer_id",
+      "status",
+      "total",
+      "notes",
+      "items",
+      "created_at",
+      "meta",
+    ]);
+    const box = await d.locator(".rowdialog__fieldsbody").boundingBox();
+    expect(box!.width).toBeGreaterThan(900);
     expect(await midWordBreaks(page)).toEqual([]);
   });
 
-  test("a row without JSON still opens, with its columns in one list", async ({
+  test("a null is a small chip, and Hide null leaves those columns out until the app restarts", async ({
+    page,
+  }) => {
+    await openRow(page);
+    await panel(page)
+      .getByRole("button", { name: "Expand row in a dialog" })
+      .click();
+    const d = dialog(page);
+    await expect(d.locator(".nullchip")).toHaveCount(1);
+    await expect(d.locator(".nullchip")).toHaveText("null");
+    const hide = d.getByRole("checkbox", { name: "Hide null" });
+    await expect(hide).not.toBeChecked();
+    await hide.check();
+    await expect(d.locator(".nullchip")).toHaveCount(0);
+    await expect(d.locator(".rowdialog__count")).toHaveText(
+      "7 of 8 shown · 1 null hidden",
+    );
+    await expect(d.locator(".rowfields dt", { hasText: "notes" })).toHaveCount(
+      0,
+    );
+    // It stays on for the next row (which has no nulls, so nothing is hidden), and after closing.
+    await page.keyboard.press("ArrowDown");
+    await expect(d).toContainText("Row 2 of 3");
+    await expect(hide).toBeChecked();
+    await d.getByRole("button", { name: "Close" }).click();
+    await panel(page)
+      .getByRole("button", { name: "Expand row in a dialog" })
+      .click();
+    await expect(
+      dialog(page).getByRole("checkbox", { name: "Hide null" }),
+    ).toBeChecked();
+  });
+
+  test("a row without JSON in it still opens, with its columns in one list", async ({
     page,
   }) => {
     await openRow(page, 2);
@@ -561,7 +655,7 @@ test.describe("the row dialog", () => {
       .click();
     const d = dialog(page);
     await expect(d).toContainText("orders · id 48211");
-    await expect(d.locator(".code")).toHaveCount(1);
+    await expect(d.locator(".jsonchip")).toHaveCount(1);
   });
 
   test("the arrows move between rows, and stop at the ends", async ({
@@ -635,7 +729,7 @@ test.describe("the row dialog", () => {
     const find = d.getByRole("searchbox", { name: "Find in row" });
     await find.fill("cust");
     await expect(d.getByRole("status")).toHaveText("1 of 1");
-    await expect(d.locator(".rowdialog__count")).toHaveText("1 of 6 match");
+    await expect(d.locator(".rowdialog__count")).toHaveText("1 of 8 match");
     await expect(d.locator(".rowfields__item")).toHaveCount(1);
     await expect(d.locator(".rowfields mark")).toHaveText("cust");
     // A value matches too, not only a name.
@@ -647,30 +741,74 @@ test.describe("the row dialog", () => {
     await expect(d).toContainText("No columns match.");
   });
 
-  test("Enter and Shift+Enter step through matches in the columns and the JSON", async ({
+  test("searching the whole word null marks the null chips, and a part of it matches nothing", async ({
     page,
   }) => {
     const d = await openDialog(page);
     const find = d.getByRole("searchbox", { name: "Find in row" });
+    await find.fill("null");
+    await expect(d.getByRole("status")).toHaveText("1 of 1");
+    await expect(d.locator(".nullchip--hit")).toHaveCount(1);
+    await expect(d.locator(".nullchip--current")).toHaveCount(1);
+    await expect(d.locator(".rowfields__item")).toHaveCount(1);
+    await find.fill("NULL");
+    await expect(d.locator(".nullchip--hit")).toHaveCount(1);
+    // Part of the word is not a match, so a null cell never shows up for "nu".
+    await find.fill("nu");
+    await expect(d.getByRole("status")).toHaveText("No matches");
+    await expect(d.locator(".nullchip--hit")).toHaveCount(0);
+  });
+
+  test("Enter and Shift+Enter step through the columns that match, a JSON value counting once", async ({
+    page,
+  }) => {
+    const d = await openDialog(page);
+    const find = d.getByRole("searchbox", { name: "Find in row" });
+    // Twice inside the items JSON, but that column counts once.
     await find.fill("BK-");
-    // Two hits, both inside the items JSON.
-    await expect(d.getByRole("status")).toHaveText("1 of 2");
-    await expect(d.locator('mark[data-current="true"]')).toContainText("BK-");
+    await expect(d.getByRole("status")).toHaveText("1 of 1");
+    await expect(d.locator(".jsonchip__match")).toHaveText("2 matches");
+    await expect(d.locator(".jsonchip__match--current")).toHaveCount(1);
+    // A letter that is in several column names and values.
+    await find.fill("t");
+    const total = await d.getByRole("status").innerText();
+    expect(total).toMatch(/^1 of \d+$/);
+    const n = Number(total.split(" ")[2]);
+    expect(n).toBeGreaterThan(2);
     await find.press("Enter");
-    await expect(d.getByRole("status")).toHaveText("2 of 2");
-    await find.press("Enter");
-    await expect(d.getByRole("status")).toHaveText("1 of 2");
+    await expect(d.getByRole("status")).toHaveText(`2 of ${n}`);
     await find.press("Shift+Enter");
-    await expect(d.getByRole("status")).toHaveText("2 of 2");
+    await expect(d.getByRole("status")).toHaveText(`1 of ${n}`);
+    await find.press("Shift+Enter");
+    await expect(d.getByRole("status")).toHaveText(`${n} of ${n}`);
+  });
+
+  test("a search carries into one JSON value, where every match inside it is stepped through", async ({
+    page,
+  }) => {
+    const d = await openDialog(page);
+    await d.getByRole("searchbox", { name: "Find in row" }).fill("BK-");
+    await d.locator('[data-open="5"]').click();
+    const solo = page.getByRole("dialog", { name: "items" });
+    const find = solo.getByRole("searchbox", { name: "Find in value" });
+    await expect(find).toHaveValue("BK-");
+    await expect(solo.getByRole("status")).toHaveText("1 of 2");
+    await find.press("Enter");
+    await expect(solo.getByRole("status")).toHaveText("2 of 2");
+    await expect(solo.locator('mark[data-current="true"]')).toContainText(
+      "BK-",
+    );
   });
 
   test("a hit inside a fold opens the fold", async ({ page }) => {
     const d = await openDialog(page);
-    await d.getByRole("button", { name: "Collapse all" }).first().click();
-    await expect(d.locator(".code").first()).not.toContainText("BK-207");
-    await d.getByRole("searchbox", { name: "Find in row" }).fill("BK-207");
-    await expect(d.locator('mark[data-current="true"]')).toBeVisible();
-    await expect(d.locator(".code").first()).toContainText("BK-207");
+    await d.locator('[data-open="5"]').click();
+    const solo = page.getByRole("dialog", { name: "items" });
+    await solo.getByRole("button", { name: "Collapse all" }).click();
+    await expect(solo.locator(".code")).not.toContainText("BK-207");
+    await solo.getByRole("searchbox", { name: "Find in value" }).fill("BK-207");
+    await expect(solo.locator('mark[data-current="true"]')).toBeVisible();
+    await expect(solo.locator(".code")).toContainText("BK-207");
   });
 
   test("Ctrl+F focuses the search, the first Esc clears it and the second closes the dialog", async ({
@@ -769,16 +907,14 @@ test.describe("the row dialog", () => {
       .getByRole("button", { name: "Expand items in a dialog" })
       .click();
     const d = page.getByRole("dialog", { name: "items" });
-    const find = d.getByRole("searchbox", { name: "Find in row" });
+    const find = d.getByRole("searchbox", { name: "Find in value" });
     await find.fill("sku");
     await expect(d.getByRole("status")).toHaveText("1 of 2");
     // "paid" is in the row but not in this value.
     await find.fill("paid");
     await expect(d.getByRole("status")).toHaveText("No matches");
   });
-});
 
-test.describe("the database picker", () => {
   test("draws one focus ring, on the row, not on the box inside it", async ({
     page,
   }) => {

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ResultColumn } from "../api/types";
 import { copyText } from "../lib/clipboard";
-import { stepHit, type Range } from "../lib/find";
-import { findInRow, hitsLabel, placeOf } from "../lib/rowFind";
+import { findRanges, MAX_HITS, stepHit, type Range } from "../lib/find";
+import { findInRow, hitsLabel } from "../lib/rowFind";
 import { rowTitle, splitRow, type JsonField } from "../lib/sql";
+import { useUi } from "../state/ui";
 import { FoldAllButton } from "./JsonSection";
 import { JsonText } from "./JsonText";
+import { ArrowLeftIcon } from "./Icons";
 import { RowBody } from "./RowBody";
 import { useEscape } from "./useEscape";
 import { useJsonFold, useRevealHit } from "./useJsonFold";
@@ -14,8 +16,9 @@ const FOCUSABLE =
   "button:not(:disabled), [href], input, [tabindex]:not([tabindex='-1'])";
 
 /**
- * A row in a big dialog over the table: all of its columns, or just one JSON value. It is for
- * reading; the side panel is for looking at rows one after another while the table stays in view.
+ * A row in a big dialog over the table: every column in table order, or one JSON value on its
+ * own (opened from the list, with a way back). It is for reading; the side panel is for looking
+ * at rows one after another while the table stays in view.
  */
 export function RowDialog({
   table,
@@ -25,6 +28,7 @@ export function RowDialog({
   count,
   json,
   onMove,
+  onJson,
   onClose,
 }: {
   table: string;
@@ -35,39 +39,88 @@ export function RowDialog({
   /** Index of the JSON column to show alone, or null for the whole row. */
   json: number | null;
   onMove: (delta: number) => void;
+  /** Show one JSON value on its own, or null to go back to the whole row. */
+  onJson: (column: number | null) => void;
   onClose: () => void;
 }) {
-  // Esc closes the dialog wherever focus is, not only inside it (see useEscape).
-  useEscape(onClose);
   const box = useRef<HTMLDivElement>(null);
   const close = useRef<HTMLButtonElement>(null);
+  const back = useRef<HTMLButtonElement>(null);
+  const opened = useRef<number | null>(null);
+  const hideNull = useUi((s) => s.hideNull);
+  const setHideNull = useUi((s) => s.setHideNull);
   const split = useMemo(() => splitRow(columns, row), [columns, row]);
   const solo =
     json === null ? undefined : split.json.find((f) => f.index === json);
 
-  // Find: kept while moving between rows, so one column can be compared across rows.
+  // Find: kept while moving between rows and between the list and one value.
   const [term, setTerm] = useState("");
   const [at, setAt] = useState(0);
   const search = useRef<HTMLInputElement>(null);
   const hits = useMemo(
-    () =>
-      solo
-        ? findInRow(columns, row, [], [solo], term)
-        : findInRow(columns, row, split.plain, split.json, term),
-    [columns, row, split, solo, term],
+    () => findInRow(columns, row, split.json, term),
+    [columns, row, split, term],
   );
-  const current = Math.min(at, Math.max(hits.total - 1, 0));
-  const place = placeOf(hits, current);
+  // One JSON value on its own is searched for every match inside it.
+  const soloRanges = useMemo(
+    () => (solo ? findRanges(solo.pretty, term).slice(0, MAX_HITS) : []),
+    [solo, term],
+  );
+  const total = solo ? soloRanges.length : hits.total;
+  const current = Math.min(at, Math.max(total - 1, 0));
   // Keep the match the search is on in view.
   useEffect(() => {
     box.current
-      ?.querySelector('mark[data-current="true"]')
+      ?.querySelector('[data-current="true"]')
       ?.scrollIntoView?.({ block: "center" });
-  }, [term, current, position, hits.total]);
+  }, [term, current, position, total, solo]);
+
   const move = (delta: number) => {
     setAt(0);
     onMove(delta);
   };
+  const open = (column: number) => {
+    opened.current = column;
+    setAt(0);
+    onJson(column);
+  };
+  // Esc steps back: from one value to the row, then closes (see useEscape for focus outside).
+  const escape = () => {
+    if (solo) {
+      setAt(0);
+      onJson(null);
+    } else onClose();
+  };
+  useEscape(escape);
+
+  // Up and down move between rows, wherever focus is, except while typing in a text box.
+  const keys = useRef({ solo: false, position, count, move });
+  useEffect(() => {
+    keys.current = { solo: solo !== undefined, position, count, move };
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      const t = e.target;
+      if (
+        t instanceof HTMLTextAreaElement ||
+        t instanceof HTMLSelectElement ||
+        (t instanceof HTMLInputElement &&
+          !["checkbox", "radio", "button"].includes(t.type)) ||
+        (t instanceof HTMLElement && t.isContentEditable)
+      )
+        return;
+      const k = keys.current;
+      if (k.solo) return;
+      const delta = e.key === "ArrowUp" ? -1 : 1;
+      e.preventDefault();
+      if (k.position + delta >= 0 && k.position + delta < k.count)
+        k.move(delta);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Focus moves in, and goes back to where it was when the dialog closes.
   useEffect(() => {
@@ -77,6 +130,17 @@ export function RowDialog({
       if (before?.isConnected) before.focus();
     };
   }, []);
+  // Opening one value puts focus on Back; going back puts it on that value's Open button.
+  const soloAt = solo?.index;
+  useEffect(() => {
+    if (soloAt !== undefined) back.current?.focus();
+    else if (opened.current !== null) {
+      box.current
+        ?.querySelector<HTMLElement>(`[data-open="${opened.current}"]`)
+        ?.focus();
+      opened.current = null;
+    }
+  }, [soloAt]);
 
   const label = `Row ${position + 1} of ${count}`;
   const title = rowTitle(table, columns, row);
@@ -86,19 +150,19 @@ export function RowDialog({
         ref={search}
         type="search"
         className="find__input"
-        aria-label="Find in row"
-        placeholder="Find in row"
+        aria-label={solo ? "Find in value" : "Find in row"}
+        placeholder={solo ? "Find in value" : "Find in row"}
         value={term}
         onChange={(e) => {
           setTerm(e.target.value);
           setAt(0);
         }}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && hits.total > 0) {
+          if (e.key === "Enter" && total > 0) {
             e.preventDefault();
-            setAt(stepHit(current, hits.total, e.shiftKey));
+            setAt(stepHit(current, total, e.shiftKey));
           } else if (e.key === "Escape" && term !== "") {
-            // The first Esc clears the search; a second one closes the dialog.
+            // The first Esc clears the search; a second one steps back or closes.
             e.preventDefault();
             e.stopPropagation();
             setTerm("");
@@ -107,7 +171,7 @@ export function RowDialog({
       />
       {term !== "" && (
         <span className="find__count" role="status">
-          {hitsLabel(hits.total, current)}
+          {hitsLabel(total, current)}
         </span>
       )}
     </div>
@@ -132,14 +196,14 @@ export function RowDialog({
     >
       <div
         ref={box}
-        className={`rowdialog${solo ? " rowdialog--solo" : ""}`}
+        className="rowdialog"
         role="dialog"
         aria-modal="true"
         aria-label={solo ? columns[solo.index].name : "Row details"}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             e.stopPropagation();
-            onClose();
+            escape();
           } else if (
             (e.metaKey || e.ctrlKey) &&
             !e.shiftKey &&
@@ -170,10 +234,20 @@ export function RowDialog({
             field={solo}
             name={columns[solo.index].name}
             label={`${title} · ${label}`}
+            backButton={
+              <button
+                ref={back}
+                type="button"
+                className="btn btn--small"
+                onClick={escape}
+              >
+                <ArrowLeftIcon /> Back to row
+              </button>
+            }
             closeButton={closeButton}
             searchBox={searchBox}
-            ranges={hits.json[0]?.ranges}
-            current={place?.kind === "json" ? place.local : -1}
+            ranges={soloRanges}
+            current={term === "" ? -1 : current}
           />
         ) : (
           <>
@@ -186,6 +260,7 @@ export function RowDialog({
                 type="button"
                 className="btn btn--small"
                 aria-label="Previous row"
+                title="Previous row (↑)"
                 disabled={position === 0}
                 onClick={() => move(-1)}
               >
@@ -195,12 +270,21 @@ export function RowDialog({
                 type="button"
                 className="btn btn--small"
                 aria-label="Next row"
+                title="Next row (↓)"
                 disabled={position >= count - 1}
                 onClick={() => move(1)}
               >
                 ↓
               </button>
               {searchBox}
+              <label className="rowdialog__check">
+                <input
+                  type="checkbox"
+                  checked={hideNull}
+                  onChange={(e) => setHideNull(e.target.checked)}
+                />
+                Hide null
+              </label>
               {closeButton}
             </div>
             <RowBody
@@ -208,7 +292,9 @@ export function RowDialog({
               columns={columns}
               row={row}
               variant="dialog"
+              onOpenJson={open}
               find={{ term, hits, current }}
+              hideNull={hideNull}
             />
           </>
         )}
@@ -222,17 +308,19 @@ function SoloJson({
   field,
   name,
   label,
+  backButton,
   closeButton,
   searchBox,
-  ranges = [],
+  ranges,
   current,
 }: {
   field: JsonField;
   name: string;
   label: string;
+  backButton: React.ReactNode;
   closeButton: React.ReactNode;
   searchBox: React.ReactNode;
-  ranges?: readonly Range[];
+  ranges: readonly Range[];
   current: number;
 }) {
   const fold = useJsonFold(field.pretty, false);
@@ -240,6 +328,7 @@ function SoloJson({
   return (
     <>
       <div className="rowdialog__head">
+        {backButton}
         <div className="rowpanel__title">
           <span className="rowpanel__label">{label}</span>
           <span className="rowdialog__solotitle">
