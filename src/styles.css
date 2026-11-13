@@ -2311,9 +2311,6 @@ tr.row--fresh td {
   text-align: inherit;
   cursor: pointer;
 }
-.num .sorthead {
-  margin-left: auto;
-}
 .sorthead:hover .sqlgrid__name {
   color: var(--secondary);
 }
@@ -2501,18 +2498,44 @@ tr.row--fresh td {
 }
 .rowdialog__fields {
   flex: none;
-  width: 320px;
-  padding: 16px 0 0;
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border-right: 1px solid var(--border-soft);
+}
+.rowdialog__fieldshead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 6px;
+}
+.rowdialog__count {
+  color: var(--muted);
+  font-size: 12px;
+}
+.rowdialog__fieldsbody {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
+  padding-bottom: 8px;
 }
-.rowdialog__fields .section-label {
-  padding: 0 16px;
-}
-.rowdialog__fields .rowfields {
-  grid-template-columns: 104px 1fr;
-  gap: 8px 12px;
+/* The columns flow into as many columns as fit, so a wide table reads across, not down. */
+.rowdialog .rowfields {
+  display: block;
+  column-width: 340px;
+  column-gap: 0;
+  column-rule: 1px solid var(--border-soft);
+  padding: 0;
   border-bottom: 0;
+}
+.rowdialog .rowfields__item {
+  display: grid;
+  grid-template-columns: var(--label, 150px) 1fr;
+  gap: 12px;
+  padding: 5px 16px;
+  break-inside: avoid;
 }
 .rowdialog__json {
   flex: 1;
@@ -2522,6 +2545,9 @@ tr.row--fresh td {
 .rowdialog__json .rowjson__head,
 .rowdialog__json .rowjson .code {
   padding-right: 20px;
+}
+.rowdialog__body--plain {
+  --label: 180px;
 }
 .rowdialog__body--plain .rowdialog__fields {
   width: auto;
@@ -2546,13 +2572,11 @@ tr.row--fresh td {
   }
   .rowdialog__fields {
     width: auto;
-    padding-bottom: 4px;
     border-right: 0;
     border-bottom: 1px solid var(--border-soft);
-    overflow: visible;
   }
-  .rowdialog__fields .rowfields {
-    grid-template-columns: 96px 1fr 96px 1fr;
+  .rowdialog__fieldsbody {
+    overflow: visible;
   }
   .rowdialog__json {
     overflow: visible;
@@ -2560,45 +2584,48 @@ tr.row--fresh td {
 }
 
 /* Pinned columns stay at the left while the table scrolls sideways. */
+/* A heading is the sort button and, beside it, the pin: two separate targets, so the pin
+   never sits on the name. The negative margin takes back most of the pin's room from the
+   heading's own padding. */
 .colhead {
-  display: block;
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  margin-right: -6px;
+}
+.colhead > :first-child {
+  flex: 1;
+  min-width: 0;
 }
 .pinbtn {
-  position: absolute;
-  top: 5px;
-  right: 4px;
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   border: 0;
   border-radius: 5px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  opacity: 0;
+  opacity: 0.45;
 }
-.num .pinbtn {
-  right: auto;
-  left: 4px;
-}
-.sqlgrid th.pinned.num {
-  padding-right: 12px;
-  padding-left: 30px;
-}
-.sqlgrid th:hover .pinbtn,
-.pinbtn:focus-visible,
-.pinbtn--on {
+.sqlgrid th:hover .pinbtn:not(:disabled),
+.pinbtn:focus-visible:not(:disabled) {
+  background: var(--card);
+  color: var(--ink);
   opacity: 1;
 }
-.pinbtn--on {
+.pinbtn--on,
+.sqlgrid th:hover .pinbtn--on {
   color: var(--amber);
+  opacity: 1;
 }
 .pinbtn:disabled {
   cursor: not-allowed;
-  opacity: 0.4;
+  opacity: 0.25;
 }
 .sqlgrid td.pinned {
   position: sticky;
@@ -2607,7 +2634,6 @@ tr.row--fresh td {
 }
 .sqlgrid th.pinned {
   z-index: 4;
-  padding-right: 30px;
 }
 .sqlrow:hover td.pinned {
   background: linear-gradient(var(--hover), var(--hover)) var(--card);
