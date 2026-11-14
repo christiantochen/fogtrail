@@ -217,7 +217,7 @@ describe("PostgreSQL completion", () => {
   const pg: Known = { ...known, dialect: "postgres" };
   const pgAt = (sql: string, manual = false) => {
     const caret = sql.indexOf("|");
-    const text = sql.replace("|", "");
+    const text = sql.slice(0, caret) + sql.slice(caret + 1);
     return suggest(contextAt(text, caret, "postgres"), pg, manual);
   };
 
@@ -246,8 +246,6 @@ describe("PostgreSQL completion", () => {
     expect(refs).toEqual([{ schema: "shop", table: "orders", alias: "o" }]);
   });
   it("suggests nothing inside a quoted name", () => {
-    expect(
-      contextAt('SELECT "ab|c"'.replace("|", ""), 10, "postgres").blocked,
-    ).toBe(true);
+    expect(contextAt('SELECT "abc"', 10, "postgres").blocked).toBe(true);
   });
 });
