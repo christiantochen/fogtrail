@@ -1004,6 +1004,7 @@ dependencies = [
  "tokio",
  "urlencoding",
  "uuid",
+ "webview2-com",
  "windows",
 ]
 
