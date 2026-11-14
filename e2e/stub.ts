@@ -91,6 +91,68 @@ export async function stubBackend(
           return w.__cbs.length - 1;
         },
         invoke: async (cmd: string, args: { id?: string; name?: string }) => {
+          // `ledger`: 126 columns in groups, to try the row dialog on a wide table.
+          const ledger = () => {
+            const spec: [string, number, number][] = [
+              ["", 9, 8],
+              ["billing_", 22, 9],
+              ["shipping_", 24, 11],
+              ["audit_", 9, 7],
+              ["flags_", 31, 9],
+              ["x", 31, 8],
+            ];
+            const cols: {
+              name: string;
+              typeName: string;
+              value: string | null;
+            }[] = [];
+            for (const [prefix, count, set] of spec) {
+              for (let i = 0; i < count; i++) {
+                const name =
+                  prefix === ""
+                    ? [
+                        "id",
+                        "status",
+                        "total",
+                        "channel",
+                        "placed",
+                        "meta",
+                        "tags",
+                        "note",
+                        "ref",
+                      ][i]
+                    : prefix === "x"
+                      ? `x${String(i).padStart(2, "0")}_value`
+                      : `${prefix}${["name", "email", "city", "amount", "address", "due", "code", "memo", "flag"][i % 9]}${i >= 9 ? i : ""}`;
+                const typeName =
+                  name === "meta" || name.endsWith("address")
+                    ? "JSON"
+                    : name === "tags"
+                      ? "TEXT[]"
+                      : name === "id" || name.endsWith("amount")
+                        ? "BIGINT"
+                        : name === "placed" || name.endsWith("due")
+                          ? "DATETIME"
+                          : "VARCHAR";
+                const value =
+                  i >= set
+                    ? null
+                    : typeName === "JSON"
+                      ? '{"a": 1, "b": 2, "c": 3}'
+                      : typeName === "TEXT[]"
+                        ? "{wholesale,gift}"
+                        : typeName === "BIGINT"
+                          ? String(7730 + i)
+                          : typeName === "DATETIME"
+                            ? "2026-11-14 10:58:13"
+                            : name === "note"
+                              ? "Deliver to the back door of the bakery, ring twice and ask for the manager on duty"
+                              : `${name} ${i}`;
+                cols.push({ name, typeName, value });
+              }
+            }
+            return cols;
+          };
           switch (cmd) {
             case "plugin:event|listen": {
               const w = window as unknown as {
@@ -360,6 +422,7 @@ export async function stubBackend(
                 { name: "events", kind: "table", estimatedRows: 250 },
                 { name: "orders", kind: "table", estimatedRows: 48213 },
                 { name: "paying_customers", kind: "view", estimatedRows: null },
+                { name: "ledger", kind: "table", estimatedRows: 6 },
                 { name: "settings", kind: "table", estimatedRows: 1 },
                 { name: "weird name", kind: "table", estimatedRows: 1 },
               ];
@@ -383,6 +446,18 @@ export async function stubBackend(
                 comment: null,
                 ...extra,
               });
+              if (t === "ledger")
+                return {
+                  kind: "table",
+                  engine: "InnoDB",
+                  comment: null,
+                  columns: ledger().map((c, i) =>
+                    col(c.name, c.typeName.toLowerCase(), {
+                      key: i === 0 ? "PRI" : null,
+                    }),
+                  ),
+                  indexes: [],
+                };
               if (
                 t === "orders" &&
                 (window as unknown as { __pg?: boolean }).__pg
@@ -624,6 +699,18 @@ export async function stubBackend(
                   );
                 }
                 return { columns, rows, offset: 0, hasMore: false };
+              }
+              if (a.table === "ledger") {
+                const cols = ledger();
+                return {
+                  columns: cols.map((c) => ({
+                    name: c.name,
+                    typeName: c.typeName,
+                  })),
+                  rows: [cols.map((c) => c.value)],
+                  offset: 0,
+                  hasMore: false,
+                };
               }
               if (a.table === "settings") {
                 // Many columns with long names and no JSON: the row dialog has to lay them out.

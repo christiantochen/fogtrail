@@ -196,6 +196,7 @@ function Data({
       {/* A new page, filter or sort starts with no row open. */}
       <DataGrid
         key={`${offset}|${filter}|${sort?.column}|${sort?.desc}`}
+        schema={schema}
         table={table}
         page={page}
         info={new Map(columns?.map((c) => [c.name, c]))}
@@ -213,6 +214,7 @@ function Data({
 }
 
 function DataGrid({
+  schema,
   table,
   page,
   info,
@@ -225,6 +227,7 @@ function DataGrid({
   loading,
   onOffset,
 }: {
+  schema: string;
   table: string;
   page: RowPage;
   info: Map<string, ColumnInfo>;
@@ -471,7 +474,9 @@ function DataGrid({
       )}
       {dialog && open !== null && page.rows[open] && (
         <RowDialog
+          schema={schema}
           table={table}
+          info={info}
           columns={page.columns}
           row={page.rows[open]}
           position={open}
