@@ -1,4 +1,9 @@
-import { defaultPort, type Draft, type DriverId } from "./profile";
+import {
+  defaultPort,
+  type Draft,
+  type DriverId,
+  type SslMode,
+} from "./profile";
 
 /** What a Redis URL says. A field the URL does not mention is left out. */
 export interface ParsedUrl {
@@ -12,8 +17,12 @@ export interface ParsedUrl {
   database?: number;
   /** MySQL: the database name in the path, left out when there is none. */
   schema?: string;
+  /** PostgreSQL: the database name in the path, left out when there is none. */
+  dbname?: string;
   /** `rediss://` is TLS. For MySQL, `?ssl-mode=required` and the like. */
   tls: boolean;
+  /** PostgreSQL: what `?sslmode=` asks for. Left out when the URL has none. */
+  sslMode?: SslMode;
 }
 
 export type ParseResult =
@@ -25,6 +34,7 @@ export const DEFAULT_PORT = 6379;
 const URL_STYLE: Record<DriverId, { name: string; schemes: string[] }> = {
   redis: { name: "Redis", schemes: ["redis", "rediss"] },
   mysql: { name: "MySQL", schemes: ["mysql"] },
+  postgres: { name: "PostgreSQL", schemes: ["postgres", "postgresql"] },
 };
 
 /** True for anything that looks like `scheme://…`, so a plain hostname is never mistaken for a URL. */
@@ -51,6 +61,27 @@ export const parseRedisUrl = (input: string): ParseResult =>
 /** Reads `mysql://[user[:password]@]host[:port][/schema][?ssl-mode=required]`. */
 export const parseMysqlUrl = (input: string): ParseResult =>
   parseConnectionUrl(input, "mysql");
+
+/** Reads `postgres://[user[:password]@]host[:port][/database][?sslmode=require]`. */
+export const parsePostgresUrl = (input: string): ParseResult =>
+  parseConnectionUrl(input, "postgres");
+
+/**
+ * `?sslmode=` as Fogtrail knows it. `disable` is off, `verify-ca` and `verify-full` check
+ * the certificate, and the rest (`require`, `prefer`, `allow`) encrypt without checking.
+ * Null when the URL doesn't say.
+ */
+function postgresSslMode(query: string): SslMode | null {
+  for (const pair of query.split("&")) {
+    const [k, v = ""] = pair.split("=");
+    if (k.toLowerCase() !== "sslmode") continue;
+    const val = v.toLowerCase();
+    if (val === "disable") return "disable";
+    if (val === "verify-full" || val === "verify-ca") return "verify-full";
+    return "require";
+  }
+  return null;
+}
 
 /** `?ssl-mode=required`, `?tls=true` and similar, as drivers and tools write them. */
 function mysqlTls(query: string): boolean {
@@ -94,8 +125,13 @@ export function parseConnectionUrl(
   const path = rest.slice(end);
 
   const value: ParsedUrl = { host: "", tls: scheme === "rediss" };
-  if (driver === "mysql")
-    value.tls = mysqlTls(rest.split("?")[1]?.split("#")[0] ?? "");
+  const query = rest.split("?")[1]?.split("#")[0] ?? "";
+  if (driver === "mysql") value.tls = mysqlTls(query);
+  if (driver === "postgres") {
+    const mode = postgresSslMode(query);
+    if (mode !== null) value.sslMode = mode;
+    value.tls = mode !== "disable";
+  }
 
   if (userinfo !== null) {
     const colon = userinfo.indexOf(":");
@@ -142,11 +178,12 @@ export function parseConnectionUrl(
   if (path.startsWith("/")) {
     const raw = path.slice(1).split(/[?#]/)[0];
     if (raw !== "") {
-      if (driver === "mysql") {
-        const schema = decode(raw);
-        if (schema === null)
+      if (driver === "mysql" || driver === "postgres") {
+        const name = decode(raw);
+        if (name === null)
           return fail("The database name has a broken % escape.");
-        value.schema = schema;
+        if (driver === "mysql") value.schema = name;
+        else value.dbname = name;
       } else {
         if (!/^\d+$/.test(raw))
           return fail(`Database “${raw}” is not a number.`);
@@ -159,7 +196,14 @@ export function parseConnectionUrl(
 
 /** Names of the form fields a URL filled, for the "Filled from URL" hint. */
 export type Filled = (
-  "host" | "port" | "username" | "password" | "database" | "schema" | "tls"
+  | "host"
+  | "port"
+  | "username"
+  | "password"
+  | "database"
+  | "schema"
+  | "dbname"
+  | "tls"
 )[];
 
 /**
@@ -174,6 +218,10 @@ export function applyUrl(
 ): { draft: Draft; password: string; filled: Filled } {
   const filled: Filled = ["host"];
   const next: Draft = { ...draft, host: u.host, tls: u.tls };
+  if (draft.driver === "postgres") {
+    // A URL with no sslmode on a new connection gets the safe default.
+    if (u.sslMode !== undefined || fresh) next.sslMode = u.sslMode ?? "require";
+  }
   filled.push("tls");
   if (u.port !== undefined || fresh) {
     next.port = String(u.port ?? defaultPort(draft.driver));
@@ -183,6 +231,11 @@ export function applyUrl(
     if (u.schema !== undefined || fresh) {
       next.schema = u.schema ?? "";
       filled.push("schema");
+    }
+  } else if (draft.driver === "postgres") {
+    if (u.dbname !== undefined || fresh) {
+      next.dbname = u.dbname ?? "";
+      filled.push("dbname");
     }
   } else if (u.database !== undefined || fresh) {
     next.database = String(u.database ?? 0);
@@ -239,6 +292,26 @@ export function buildMysqlUrl(
   return `mysql://${auth}${h}:${d.port.trim()}${path}${d.tls ? "?ssl-mode=required" : ""}`;
 }
 
+/** Builds `postgres://…` back from the form. The password is left out unless `withPassword`. */
+export function buildPostgresUrl(
+  d: Draft,
+  password: string,
+  withPassword: boolean,
+): string {
+  const user = d.username.trim();
+  let auth = "";
+  if (withPassword && password !== "") {
+    auth = `${encodeURIComponent(user)}:${encodeURIComponent(password)}@`;
+  } else if (user !== "") {
+    auth = `${encodeURIComponent(user)}@`;
+  }
+  const host = d.host.trim();
+  const h = host.includes(":") ? `[${host}]` : host;
+  const db = d.dbname.trim();
+  const path = db !== "" ? `/${encodeURIComponent(db)}` : "";
+  return `postgres://${auth}${h}:${d.port.trim()}${path}?sslmode=${d.sslMode}`;
+}
+
 /** The form as a URL, in the style of its driver. */
 export const buildConnectionUrl = (
   d: Draft,
@@ -247,4 +320,6 @@ export const buildConnectionUrl = (
 ): string =>
   d.driver === "mysql"
     ? buildMysqlUrl(d, password, withPassword)
-    : buildRedisUrl(d, password, withPassword);
+    : d.driver === "postgres"
+      ? buildPostgresUrl(d, password, withPassword)
+      : buildRedisUrl(d, password, withPassword);

@@ -524,12 +524,19 @@ function Cell({
   );
 }
 
+const KIND_LABEL: Record<string, string> = {
+  view: "View",
+  matview: "Materialized view",
+  foreign: "Foreign table",
+  table: "Table",
+};
+
 function Structure({ s }: { s: TableStructure }) {
   return (
     <div className="sqlpanel__scroll">
       <dl className="sqlfacts">
         <dt>Kind</dt>
-        <dd>{s.kind === "view" ? "View" : "Table"}</dd>
+        <dd>{KIND_LABEL[s.kind] ?? "Table"}</dd>
         {s.engine && (
           <>
             <dt>Engine</dt>

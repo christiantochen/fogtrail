@@ -27,6 +27,7 @@ import {
   TEXT_JSON_LIMIT,
   toggleColumnPin,
   visibleSchemas,
+  sqlDialectOf,
 } from "./sql";
 
 const table = (name: string, rows: number | null = 1): TableInfo => ({
@@ -346,5 +347,39 @@ describe("rowTitle", () => {
     ).toBe("orders · id 7");
     expect(rowTitle("orders", [{ name: "x" }], ["a"])).toBe("orders");
     expect(rowTitle("orders", [{ name: "id" }], [null])).toBe("orders");
+  });
+});
+
+describe("PostgreSQL types", () => {
+  it("treats JSONB as JSON", () => {
+    expect(isJsonType("JSONB")).toBe(true);
+    expect(isJsonType("jsonb")).toBe(true);
+    expect(isJsonType("TEXT")).toBe(false);
+  });
+  it("right-aligns PostgreSQL's number types", () => {
+    for (const t of ["INT2", "INT4", "INT8", "FLOAT8", "NUMERIC", "MONEY"])
+      expect(isNumericType(t)).toBe(true);
+    expect(isNumericType("TEXT")).toBe(false);
+  });
+  it("knows TIMESTAMPTZ is a time", () => {
+    expect(isTimeType("TIMESTAMPTZ")).toBe(true);
+  });
+  it("splits a timestamp that ends with an offset", () => {
+    expect(splitTimestamp("2026-11-11 08:51:20.5+00")).toEqual([
+      "2026-11-11",
+      "08:51:20.5+00",
+    ]);
+    expect(splitTimestamp("2026-11-11 08:51:20+05:30")).toEqual([
+      "2026-11-11",
+      "08:51:20+05:30",
+    ]);
+    expect(splitTimestamp("2026-11-11 08:51:20")).not.toBeNull();
+    expect(splitTimestamp("2026-11-11 08:51:20+")).toBeNull();
+  });
+  it("picks the dialect from the driver name", () => {
+    expect(sqlDialectOf("PostgreSQL")).toBe("postgres");
+    expect(sqlDialectOf("MySQL 8.0")).toBe("mysql");
+    expect(sqlDialectOf("MariaDB")).toBe("mysql");
+    expect(sqlDialectOf(undefined)).toBe("mysql");
   });
 });

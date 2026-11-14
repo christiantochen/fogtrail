@@ -101,15 +101,19 @@ export interface Profile {
   port: number;
   username: string | null;
   database: number;
-  /** Default schema (MySQL database name). Null for Redis. */
+  /** Default schema (MySQL database name). Null for Redis and PostgreSQL. */
   schema: string | null;
   tls: boolean;
+  /** PostgreSQL database name. Null for the other stores. */
+  dbname: string | null;
+  /** PostgreSQL SSL mode: disable, require or verify-full. Null means require. */
+  sslMode: string | null;
 }
 
 export interface TestResult {
   product: string;
   version: string;
-  /** Null for stores that don't count keys (MySQL). */
+  /** Null for stores that don't count keys (MySQL, PostgreSQL). */
   keyCount: number | null;
 }
 
@@ -140,13 +144,13 @@ export interface ServerInfo {
 
 export interface SchemaInfo {
   name: string;
-  /** Built-in schemas such as mysql and information_schema. */
+  /** Built-in schemas such as mysql, information_schema and pg_catalog. */
   system: boolean;
 }
 
 export interface TableInfo {
   name: string;
-  kind: "table" | "view";
+  kind: "table" | "view" | "matview" | "foreign";
   /** The server's own estimate, never an exact count. Null for views. */
   estimatedRows: number | null;
 }
@@ -177,7 +181,7 @@ export interface ForeignKeyInfo {
 }
 
 export interface TableStructure {
-  kind: "table" | "view";
+  kind: "table" | "view" | "matview" | "foreign";
   engine: string | null;
   comment: string | null;
   columns: ColumnInfo[];

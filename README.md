@@ -8,11 +8,13 @@ Downloads: https://tools.christiantochen.com/fogtrail
 
 ## What it does
 
-Redis (and Redis-compatible servers such as Valkey and Dragonfly) comes first, and MySQL is being added next. The backend is built around a driver trait so other data sources can be added later.
+Redis (and Redis-compatible servers such as Valkey and Dragonfly) came first, then MySQL and PostgreSQL. The backend is built around a driver trait so other data sources can be added later.
 
 Save connection profiles (host, port, ACL user, database, TLS) with passwords in your system keychain, then browse every common key type read-only: strings (with JSON colors), hashes, lists, sets, sorted sets and streams (with consumer groups). Search and a key-type filter run on the server, keys can be listed by soonest expiry, the folder delimiter is configurable, you can switch databases, and a Server info panel shows version, memory (with a usage bar when a limit is set), clients and keys per database. Valkey and Dragonfly are detected on connect.
 
 MySQL connections (tested with MySQL 8) browse the same way, read-only: pick a database, filter its tables (row counts are the server's estimates, shown with `~`), and read a table's rows 100 at a time or its structure (columns, indexes, foreign keys). Click a heading to sort, type a `WHERE` condition to filter (it is checked like the query editor), and click a row to see it laid out, with JSON over several lines. NULL is shown apart from an empty string. A query editor runs one statement at a time and only reads: `SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN` and `WITH`. Anything else is refused before it is sent. Results stop at 1,000 rows, a statement is stopped after 30 seconds, and a running query can be cancelled. The editor colours keywords, strings, numbers and comments, and suggests table names, column names (for the tables in the statement, fetched only when needed), other databases after `name.`, and SQL keywords as you type. Tab takes the first suggestion, the arrow keys then Enter pick another, Esc closes the list and Ctrl+Space opens it by hand. It is built into the app, with no extra editor library.
+
+PostgreSQL connections (tested with PostgreSQL 16) work the same way, with the differences PostgreSQL has: a connection opens one database, and the sidebar picks a schema inside it (`public` first; built-in schemas are hidden until asked for). Tables, views, materialized views and foreign tables are listed, and the structure shows columns (identity and generated columns too), indexes (partial and expression ones included) and foreign keys. Names are quoted with double quotes, `jsonb` shows as JSON, and `timestamptz` keeps its offset. The query editor runs `SELECT`, `SHOW`, `EXPLAIN`, `VALUES` and `WITH`. The connection form takes a `postgres://` URL and an SSL mode.
 
 Fogtrail follows your system's light or dark setting. To choose one yourself, use View → Theme (System, Light or Dark); the choice is remembered.
 
@@ -41,16 +43,18 @@ npm install
 npm run tauri dev
 ```
 
-Local Redis, Valkey, Dragonfly and MySQL servers for testing (ports 6379, 6380, 6381 and 3306, localhost only):
+Local Redis, Valkey, Dragonfly, MySQL and PostgreSQL servers for testing (ports 6379, 6380, 6381, 3306 and 5432, localhost only):
 
 ```sh
 docker compose up -d
 scripts/seed.sh            # or: scripts/seed.sh valkey | dragonfly
 # MySQL (give it a few seconds to start first):
 docker compose exec -T mysql mysql -uroot -proot < scripts/seed-mysql.sql
+# PostgreSQL (the same wait):
+docker compose exec -T postgres psql -U postgres -v ON_ERROR_STOP=1 < scripts/seed-postgres.sql
 ```
 
-The MySQL seed creates a `shop` database and a read-only user, `fogtrail_ro` (password `ro-test-pw`). Throwaway passwords for a throwaway server.
+The MySQL and PostgreSQL seeds each create a `shop` database and a read-only user, `fogtrail_ro` (password `ro-test-pw`). Throwaway passwords for a throwaway server. The local PostgreSQL has no certificate, so connect with SSL mode set to Disable.
 
 | Command                | What it does                           |
 | ---------------------- | -------------------------------------- |
@@ -78,6 +82,14 @@ FOGTRAIL_TEST_MYSQL_RW_URL=mysql://fogtrail_rw:rw-test-pw@127.0.0.1:3306/shop \
 cargo test
 ```
 
+The PostgreSQL tests work the same way:
+
+```sh
+FOGTRAIL_TEST_PG_URL=postgres://fogtrail_ro:ro-test-pw@127.0.0.1:5432/shop \
+FOGTRAIL_TEST_PG_RW_URL=postgres://fogtrail_rw:rw-test-pw@127.0.0.1:5432/shop \
+cargo test
+```
+
 ## Configuration
 
 | Name                                 | Kind     | Where it's set               | What it's for                                               |
@@ -87,6 +99,8 @@ cargo test
 | `FOGTRAIL_TEST_REDIS_URL`            | variable | your shell, for `cargo test` | Points the backend integration tests at a throwaway Redis   |
 | `FOGTRAIL_TEST_MYSQL_URL`            | variable | your shell, for `cargo test` | Points the MySQL integration tests at a seeded test server  |
 | `FOGTRAIL_TEST_MYSQL_RW_URL`         | variable | your shell, for `cargo test` | A user that can write, only to prove the session refuses it |
+| `FOGTRAIL_TEST_PG_URL`               | variable | your shell, for `cargo test` | Points the PostgreSQL integration tests at a seeded server  |
+| `FOGTRAIL_TEST_PG_RW_URL`            | variable | your shell, for `cargo test` | A role that can write, only to prove the session refuses it |
 
 Names only. Values never go in this repo.
 
@@ -109,7 +123,9 @@ The window remembers its size and position between launches.
 
 - Read-only by design: the backend only exposes read commands, and the Redis driver only sends read commands.
 - MySQL is read-only in layers. Every connection starts a read-only session, so the server itself refuses writes. The query editor checks each statement first and refuses more than one statement, anything but `SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN` and `WITH`, `SELECT ... INTO`, row locks (`FOR UPDATE`) and `/*! */` comments, which the server would run. The table browser only builds `SELECT` statements itself, and a filter you type into it is checked as part of the whole statement before it is sent. For the strongest guarantee, connect with a user that can only read (the connection form shows this too): `CREATE USER 'fogtrail'@'%' IDENTIFIED BY '<password>'; GRANT SELECT, SHOW VIEW ON your_database.* TO 'fogtrail'@'%';`
+- PostgreSQL is read-only in layers too. Every connection defaults to read-only transactions, and every statement the app sends runs inside its own `BEGIN READ ONLY`, which is rolled back afterwards, so it also holds behind a connection pooler. The query editor refuses more than one statement, anything but `SELECT`, `SHOW`, `EXPLAIN`, `VALUES` and `WITH`, row locks, and functions that change state or reach outside the database (`set_config`, `pg_terminate_backend`, advisory locks, large objects, server-side file reads, `dblink`). A statement is stopped after 30 seconds. For the strongest guarantee, connect with a role that can only read (the connection form shows this too): `CREATE ROLE fogtrail LOGIN PASSWORD '<password>'; GRANT CONNECT ON DATABASE your_database TO fogtrail; GRANT USAGE ON SCHEMA public TO fogtrail; GRANT SELECT ON ALL TABLES IN SCHEMA public TO fogtrail;`
 - With TLS on, MySQL certificates and host names are verified. There is no "skip verification" switch.
+- PostgreSQL has an SSL mode instead. The default, Require, encrypts the connection but does not check who answers, as `sslmode=require` does in other tools. Choose Verify full to check the certificate and host name. Disable sends everything unencrypted, which is only for local servers.
 - Passwords live in the OS keychain, never in the saved connections file.
 - The webview runs under a strict content security policy: scripts, styles and fonts from the app only, no remote content, and IPC as the only connection it can open.
 - For servers you don't fully trust the credentials of, connect with an ACL user limited to reading, for example `ACL SETUSER fogtrail on >password ~* +@read +info +scan +type +ttl +memory|usage +xinfo -@dangerous`.
@@ -143,7 +159,7 @@ src/            React + TypeScript UI
   components/   sidebar, key tree, value viewers
 src-tauri/      Rust backend
   src/commands/ Tauri commands, the only way the UI reaches the backend
-  src/drivers/  Driver traits, the Redis driver and the MySQL driver
+  src/drivers/  Driver traits, the Redis, MySQL and PostgreSQL drivers
   src/sql_guard.rs  Decides which statements the query editor may send
   tests/        integration tests against a real server
   capabilities/ Tauri permission files

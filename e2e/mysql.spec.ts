@@ -38,7 +38,7 @@ test.describe("browsing MySQL", () => {
       page.getByRole("heading", { name: "Pick a table to read it" }),
     ).toBeVisible();
     await expect(
-      page.getByText("Read-only session. Fogtrail blocks writes."),
+      page.getByText("Read-only transaction. Writes blocked."),
     ).toBeVisible();
   });
 

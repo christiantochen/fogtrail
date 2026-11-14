@@ -3,6 +3,7 @@
 #   docker compose up -d
 #   scripts/seed.sh [redis|valkey|dragonfly]
 #   docker compose exec -T mysql mysql -uroot -proot < scripts/seed-mysql.sql   (MySQL)
+#   docker compose exec -T postgres psql -U postgres -v ON_ERROR_STOP=1 < scripts/seed-postgres.sql   (PostgreSQL)
 name: fogtrail-dev
 
 services:
@@ -30,3 +31,12 @@ services:
       MYSQL_ROOT_PASSWORD: root
     ports:
       - "127.0.0.1:3306:3306"
+
+  # Seed it with scripts/seed-postgres.sql (see above). Connect as fogtrail_ro / ro-test-pw,
+  # with SSL mode "disable": this throwaway server has no certificate.
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "127.0.0.1:5432:5432"

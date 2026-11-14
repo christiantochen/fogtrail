@@ -38,6 +38,8 @@ export interface Context {
 
 /** What the editor has loaded about the open connection. */
 export interface Known {
+  /** How names are quoted and what counts as a string. MySQL when left out. */
+  dialect?: "mysql" | "postgres";
   tables: { name: string; view: boolean }[];
   schemas: string[];
   /** Columns of a table, or undefined while they are still loading or unknown. */
@@ -50,6 +52,7 @@ export interface Known {
 }
 
 const STARTERS = ["SELECT", "SHOW", "DESCRIBE", "EXPLAIN", "WITH"];
+const PG_STARTERS = ["SELECT", "SHOW", "EXPLAIN", "VALUES", "WITH"];
 const KEYWORDS = [
   "SELECT",
   "FROM",
@@ -169,15 +172,45 @@ const NOT_ALIASES = new Set([
 
 const PLAIN_NAME = /^[A-Za-z_][A-Za-z0-9_$]*$/;
 
-/** A name as it must be written in SQL: bare when it can be, in backticks when not. */
-export function quoteName(name: string): string {
+/** PostgreSQL folds bare names to lower case, so only these may be written bare. */
+const PLAIN_PG_NAME = /^[a-z_][a-z0-9_$]*$/;
+
+/** Words PostgreSQL will not take as a bare table or column name. */
+const PG_RESERVED = new Set(
+  (
+    "ALL ANALYSE ANALYZE AND ANY ARRAY AS ASC ASYMMETRIC BOTH CASE CAST CHECK COLLATE COLUMN " +
+    "CONSTRAINT CREATE CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_TIME CURRENT_TIMESTAMP " +
+    "CURRENT_USER DEFAULT DEFERRABLE DESC DISTINCT DO ELSE END EXCEPT FALSE FETCH FOR FOREIGN " +
+    "FROM GRANT GROUP HAVING IN INITIALLY INTERSECT INTO LATERAL LEADING LIMIT LOCALTIME " +
+    "LOCALTIMESTAMP NOT NULL OFFSET ON ONLY OR ORDER PLACING PRIMARY REFERENCES RETURNING " +
+    "SELECT SESSION_USER SOME SYMMETRIC TABLE THEN TO TRAILING TRUE UNION UNIQUE USER USING " +
+    "VARIADIC WHEN WHERE WINDOW WITH"
+  ).split(" "),
+);
+
+/**
+ * A name as it must be written in SQL: bare when it can be, quoted when not. MySQL
+ * quotes with backticks. PostgreSQL uses double quotes, and also for anything with a
+ * capital letter or a reserved word, because bare names are folded to lower case.
+ */
+export function quoteName(
+  name: string,
+  dialect: "mysql" | "postgres" = "mysql",
+): string {
+  if (dialect === "postgres") {
+    return PLAIN_PG_NAME.test(name) && !PG_RESERVED.has(name.toUpperCase())
+      ? name
+      : `"${name.replace(/"/g, '""')}"`;
+  }
   return PLAIN_NAME.test(name) ? name : `\`${name.replace(/`/g, "``")}\``;
 }
 
 const unquote = (s: string) =>
   s.startsWith("`")
     ? s.slice(1, s.endsWith("`") ? -1 : undefined).replace(/``/g, "`")
-    : s;
+    : s.startsWith('"')
+      ? s.slice(1, s.endsWith('"') ? -1 : undefined).replace(/""/g, '"')
+      : s;
 
 /** Finds the tables a statement reads from, with their aliases. */
 export function findRefs(sql: string, tokens: Token[]): TableRef[] {
@@ -233,8 +266,12 @@ export function findRefs(sql: string, tokens: Token[]): TableRef[] {
 }
 
 /** What the text around `caret` means for completion. */
-export function contextAt(sql: string, caret: number): Context {
-  const tokens = tokenize(sql);
+export function contextAt(
+  sql: string,
+  caret: number,
+  dialect: "mysql" | "postgres" = "mysql",
+): Context {
+  const tokens = tokenize(sql, dialect);
   const refs = findRefs(sql, tokens);
   const empty: Context = {
     start: caret,
@@ -374,7 +411,7 @@ export function suggest(ctx: Context, known: Known, manual = false): Item[] {
   };
   const tableItem = (t: { name: string; view: boolean }): Item => ({
     label: t.name,
-    insert: quoteName(t.name),
+    insert: quoteName(t.name, known.dialect),
     kind: t.view ? "view" : "table",
     detail: t.view ? "view" : undefined,
   });
@@ -395,7 +432,7 @@ export function suggest(ctx: Context, known: Known, manual = false): Item[] {
         add(
           {
             label: c.name,
-            insert: quoteName(c.name),
+            insert: quoteName(c.name, known.dialect),
             kind: "column",
             detail: c.dataType,
           },
@@ -410,10 +447,13 @@ export function suggest(ctx: Context, known: Known, manual = false): Item[] {
   } else if (ctx.wantsTable) {
     for (const t of known.tables) add(tableItem(t), 0);
     for (const s of known.schemas) {
-      add({ label: s, insert: quoteName(s), kind: "database" }, 1);
+      add(
+        { label: s, insert: quoteName(s, known.dialect), kind: "database" },
+        1,
+      );
     }
   } else if (ctx.atStart) {
-    for (const w of STARTERS) {
+    for (const w of known.dialect === "postgres" ? PG_STARTERS : STARTERS) {
       add(
         { label: w, insert: keywordInsert(w, ctx.prefix), kind: "keyword" },
         0,
@@ -430,7 +470,7 @@ export function suggest(ctx: Context, known: Known, manual = false): Item[] {
         add(
           {
             label: c.name,
-            insert: quoteName(c.name),
+            insert: quoteName(c.name, known.dialect),
             kind: "column",
             detail:
               ctx.refs.length > 1

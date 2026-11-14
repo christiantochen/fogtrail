@@ -113,3 +113,34 @@ describe("tokenClass", () => {
     expect(cls("DELETE")).toEqual([null]);
   });
 });
+
+describe("tokenize for PostgreSQL", () => {
+  const pgKinds = (sql: string) =>
+    tokenize(sql, "postgres")
+      .filter((t) => t.type !== "space")
+      .map((t) => `${t.type}:${sql.slice(t.start, t.end)}`);
+
+  it("reads double quotes as a name, not a string", () => {
+    expect(pgKinds('SELECT "Weird Name" FROM "a""b"')).toEqual([
+      "word:SELECT",
+      'quoted:"Weird Name"',
+      "word:FROM",
+      'quoted:"a""b"',
+    ]);
+  });
+  it("keeps MySQL's reading by default", () => {
+    expect(kinds('SELECT "x"')).toEqual(["word:SELECT", 'string:"x"']);
+  });
+  it("does not treat # as a comment", () => {
+    expect(pgKinds("SELECT a #> b")).toContain("punct:#");
+    expect(kinds("SELECT 1 # note")).toContain("comment:# note");
+  });
+  it("does not treat a backslash as an escape inside a string", () => {
+    expect(pgKinds("SELECT 'a\\' , 'b'")).toEqual([
+      "word:SELECT",
+      "string:'a\\'",
+      "punct:,",
+      "string:'b'",
+    ]);
+  });
+});

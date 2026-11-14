@@ -5,10 +5,17 @@ import type {
   TableInfo,
 } from "../api/types";
 
+/** Which SQL the open connection speaks. Decides quoting and what the editor suggests. */
+export type SqlDialect = "mysql" | "postgres";
+
+/** The dialect for a connection's driver name, as `describe()` reports it. */
+export const sqlDialectOf = (driver: string | undefined): SqlDialect =>
+  driver?.startsWith("PostgreSQL") ? "postgres" : "mysql";
+
 /** Rows per page the backend sends by default. */
 export const ROWS_PER_PAGE = 100;
 
-/** MySQL's row counts are estimates, so they always carry a `~`. */
+/** Row counts are estimates from the server, so they always carry a `~`. */
 export function approxRows(n: number | null): string {
   return n === null ? "" : `~${n.toLocaleString("en-US")}`;
 }
@@ -58,6 +65,14 @@ const NUMERIC = new Set([
   "FLOAT",
   "DOUBLE",
   "YEAR",
+  // PostgreSQL's names for the same things.
+  "INT2",
+  "INT4",
+  "INT8",
+  "FLOAT4",
+  "FLOAT8",
+  "MONEY",
+  "OID",
 ]);
 
 /** Numbers line up on the right, like in a spreadsheet. */
@@ -221,16 +236,21 @@ export function splitRow(
 
 /** A date and a time apart, so the date reads first: "2026-11-11 08:51:20" gives both halves. */
 export function splitTimestamp(text: string): [string, string] | null {
-  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/.exec(text);
+  // PostgreSQL's timestamptz ends with an offset such as `+00` or `+05:30`.
+  const m =
+    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}(?::?\d{2})?|Z)?)$/.exec(
+      text,
+    );
   return m ? [m[1], m[2]] : null;
 }
 
-/** True for a JSON column, however the server spells the type. */
+/** True for a JSON column, however the server spells the type (`JSON`, or PostgreSQL's `JSONB`). */
 export function isJsonType(typeName: string): boolean {
-  return typeName.toUpperCase() === "JSON";
+  const t = typeName.toUpperCase();
+  return t === "JSON" || t === "JSONB";
 }
 
-/** True for DATETIME, TIMESTAMP and the like. */
+/** True for DATETIME, TIMESTAMP, TIMESTAMPTZ and the like. */
 export function isTimeType(typeName: string): boolean {
   return /^(DATETIME|TIMESTAMP)/i.test(typeName);
 }

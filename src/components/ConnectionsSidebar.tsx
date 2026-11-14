@@ -1,6 +1,7 @@
 import { useProfiles } from "../api/queries";
 import { useUi } from "../state/ui";
 import { Mark } from "./Icons";
+import { driverLabel } from "../lib/profile";
 
 export function ConnectionsSidebar() {
   const profiles = useProfiles();
@@ -57,7 +58,9 @@ export function ConnectionsSidebar() {
                 {p.tls ? " · TLS" : ""}
               </span>
             </span>
-            {p.driver === "mysql" && <span className="badge">MySQL</span>}
+            {p.driver !== "redis" && (
+              <span className="badge">{driverLabel(p.driver)}</span>
+            )}
           </button>
         ))}
       </nav>
