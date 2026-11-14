@@ -5,6 +5,7 @@ import {
   buildConnectionUrl,
   buildRedisUrl,
   looksLikeUrl,
+  parseConnectionUrl,
   parseMysqlUrl,
   parseRedisUrl,
   type ParsedUrl,
@@ -337,6 +338,76 @@ describe("MySQL URLs", () => {
   it("Redis forms still build redis URLs", () => {
     expect(buildConnectionUrl(emptyDraft(), "", false)).toBe(
       "redis://127.0.0.1:6379",
+    );
+  });
+});
+
+describe("postgres URLs", () => {
+  const ok = (url: string) => {
+    const r = parseConnectionUrl(url, "postgres");
+    if (!r.ok) throw new Error(r.error);
+    return r.value;
+  };
+
+  it("reads user, password, host, port and database", () => {
+    expect(ok("postgres://ro:p%40ss@db.example.com:6432/shop")).toEqual({
+      host: "db.example.com",
+      port: 6432,
+      username: "ro",
+      password: "p@ss",
+      dbname: "shop",
+      tls: true,
+      sslMode: undefined,
+    });
+  });
+  it("accepts the postgresql scheme", () => {
+    expect(ok("postgresql://u@h/db").dbname).toBe("db");
+  });
+  it("maps sslmode", () => {
+    expect(ok("postgres://u@h/db?sslmode=disable")).toMatchObject({
+      sslMode: "disable",
+      tls: false,
+    });
+    expect(ok("postgres://u@h/db?sslmode=verify-full").sslMode).toBe(
+      "verify-full",
+    );
+    expect(ok("postgres://u@h/db?sslmode=verify-ca").sslMode).toBe(
+      "verify-full",
+    );
+    expect(ok("postgres://u@h/db?sslmode=prefer").sslMode).toBe("require");
+    expect(ok("postgres://u@h/db").sslMode).toBeUndefined();
+  });
+  it("refuses other schemes with a message naming PostgreSQL", () => {
+    const r = parseConnectionUrl("mysql://u@h/db", "postgres");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("postgres://");
+  });
+  it("fills a new form, applying the safe SSL default", () => {
+    const parsed = ok("postgres://ro:pw@h/shop");
+    const out = applyUrl({ ...emptyDraft("postgres") }, "", parsed, true);
+    expect(out.draft).toMatchObject({
+      host: "h",
+      port: "5432",
+      dbname: "shop",
+      username: "ro",
+      sslMode: "require",
+    });
+    expect(out.password).toBe("pw");
+    expect(out.filled).toContain("dbname");
+  });
+  it("builds a URL back, with the password only on request", () => {
+    const d = {
+      ...emptyDraft("postgres"),
+      host: "h",
+      username: "ro",
+      dbname: "my db",
+      sslMode: "verify-full" as const,
+    };
+    expect(buildConnectionUrl(d, "p w", false)).toBe(
+      "postgres://ro@h:5432/my%20db?sslmode=verify-full",
+    );
+    expect(buildConnectionUrl(d, "p w", true)).toBe(
+      "postgres://ro:p%20w@h:5432/my%20db?sslmode=verify-full",
     );
   });
 });

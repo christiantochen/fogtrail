@@ -109,3 +109,44 @@ describe("MySQL drafts", () => {
     expect(draftOf(old).driver).toBe("redis");
   });
 });
+
+describe("PostgreSQL profiles", () => {
+  const pg = { ...emptyDraft("postgres"), name: "shop", username: "ro" };
+
+  it("starts on port 5432 with SSL required", () => {
+    expect(emptyDraft("postgres").port).toBe("5432");
+    expect(emptyDraft("postgres").sslMode).toBe("require");
+  });
+  it("needs a user and a database", () => {
+    const e = validate({ ...emptyDraft("postgres"), name: "a" });
+    expect(Object.keys(e).sort()).toEqual(["dbname", "username"]);
+    expect(validate({ ...pg, dbname: "shop" })).toEqual({});
+  });
+  it("saves the database and SSL mode, and no MySQL schema", () => {
+    const p = toProfile({ ...pg, dbname: " shop ", sslMode: "verify-full" });
+    expect(p.driver).toBe("postgres");
+    expect(p.dbname).toBe("shop");
+    expect(p.sslMode).toBe("verify-full");
+    expect(p.schema).toBeNull();
+    expect(p.database).toBe(0);
+    expect(p.tls).toBe(true);
+  });
+  it("disable turns TLS off in the profile", () => {
+    expect(toProfile({ ...pg, dbname: "shop", sslMode: "disable" }).tls).toBe(
+      false,
+    );
+  });
+  it("round-trips through draftOf", () => {
+    const p = toProfile({ ...pg, dbname: "shop", sslMode: "disable" }, "id1");
+    expect(toProfile(draftOf(p), "id1")).toEqual(p);
+  });
+  it("a profile with no SSL mode reads as require", () => {
+    const p = { ...toProfile({ ...pg, dbname: "shop" }), sslMode: null };
+    expect(draftOf(p).sslMode).toBe("require");
+  });
+  it("other stores leave the PostgreSQL fields empty", () => {
+    const p = toProfile({ ...emptyDraft(), name: "a" });
+    expect(p.dbname).toBeNull();
+    expect(p.sslMode).toBeNull();
+  });
+});

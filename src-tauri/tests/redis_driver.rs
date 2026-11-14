@@ -354,6 +354,8 @@ async fn switching_database_changes_what_you_browse() {
                 database: 15,
                 schema: None,
                 tls: false,
+                dbname: None,
+                ssl_mode: None,
             },
             None,
         )

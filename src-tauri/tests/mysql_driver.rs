@@ -43,6 +43,8 @@ fn profile_from(url: &str) -> (Profile, String) {
             database: 0,
             schema: Some(schema.into()),
             tls: false,
+            dbname: None,
+            ssl_mode: None,
         },
         pass.into(),
     )

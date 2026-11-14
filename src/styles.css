@@ -1798,7 +1798,7 @@ tr.row--fresh td {
 /* Connection form: choosing a data store */
 .drivers {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 .driver {
@@ -2352,6 +2352,49 @@ tr.row--fresh td {
   color: var(--chip-ink);
   font-size: 12px;
 }
+button.jchip--open {
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+button.jchip--open:hover {
+  filter: brightness(0.95);
+}
+button.jchip--open:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+.linkbtn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.linkbtn:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+.rowfields__utc {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.rowdialog__notice {
+  margin: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--chip);
+  color: var(--chip-ink);
+  font-size: 12.5px;
+}
+.code--raw {
+  word-break: break-all;
+}
 .rowpanel {
   flex: none;
   width: 380px;
@@ -2455,7 +2498,8 @@ tr.row--fresh td {
 }
 .rowdialog {
   width: min(1100px, 100%);
-  height: min(700px, 100%);
+  /* As tall as its rows, up to a limit; a wide table or one JSON value gets the full height. */
+  max-height: min(700px, 100%);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
@@ -2463,6 +2507,9 @@ tr.row--fresh td {
   background: var(--card);
   box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
   overflow: hidden;
+}
+.rowdialog--tall {
+  height: min(700px, 100%);
 }
 .rowdialog__head {
   flex: none;
@@ -2487,23 +2534,60 @@ tr.row--fresh td {
   font-size: 11px;
 }
 .rowdialog__body {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
-.rowdialog__fieldshead {
+.rowdialog__bar {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 14px 16px 6px;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.rowdialog__spacer {
+  flex: 1;
+}
+.rowdialog__main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+.rowdialog__col {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.rowdialog__foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--secondary);
+  font-size: 12px;
+}
+.btn--quiet {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--secondary);
 }
 .find--dialog {
   margin-left: 0;
 }
 .find--dialog .find__input {
-  width: 240px;
+  width: 300px;
+}
+.tab[aria-pressed="true"] {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 12%);
 }
 .rowdialog__check {
   display: flex;
@@ -2529,34 +2613,252 @@ tr.row--fresh td {
   font-size: 12px;
 }
 .rowdialog__fieldsbody {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding-bottom: 8px;
+  position: relative;
 }
-/* The columns flow into as many columns as fit, so a wide table reads across, not down. */
+/* One column per line: the name and its type, the value, then copy and pin. */
 .rowdialog .rowfields {
   display: block;
-  column-width: 340px;
-  column-gap: 0;
-  column-rule: 1px solid var(--border-soft);
   padding: 0;
   border-bottom: 0;
 }
 .rowdialog .rowfields__item {
   display: grid;
-  grid-template-columns: 150px 1fr;
+  grid-template-columns: minmax(240px, 32%) minmax(0, 1fr) 56px;
   align-items: center;
   gap: 12px;
-  padding: 5px 16px;
+  min-height: 30px;
+  padding: 3px 12px 3px 20px;
   border-bottom: 1px solid var(--border-soft);
-  break-inside: avoid;
 }
 .rowdialog .rowfields__item:hover {
   background: var(--hover);
 }
+.rowdialog .rowfields dt {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  color: var(--json-key);
+  font-size: 12.5px;
+}
+.rowfields__id {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rowdialog .rowfields dt .badge {
+  flex: none;
+}
 .rowdialog .rowfields dd {
-  font-size: 13px;
+  font-size: 12.5px;
+  white-space: normal;
+}
+.rowfields__value {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.rowfields__value > .mono {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.rowfields__text {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.rowfields__text--open {
+  overflow: visible;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.rowdialog .rowfields__utc {
+  display: inline;
+  margin: 0;
+}
+.rowfields__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+}
+/* Copy and pin show when the row is looked at, or reached by keyboard; pinned rows keep theirs. */
+.rowfields__actions .iconbtn {
+  opacity: 0;
+}
+.rowfields__item:hover .iconbtn,
+.rowfields__item:focus-within .iconbtn,
+.rowfields__actions--on .iconbtn--on {
+  opacity: 1;
+}
+.iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.iconbtn:hover:not(:disabled) {
+  background: var(--chip);
+  color: var(--ink);
+}
+.iconbtn:disabled {
+  cursor: default;
+  opacity: 0.35 !important;
+}
+.iconbtn--on {
+  color: var(--amber);
+}
+.iconbtn--on svg {
+  fill: currentColor;
+}
+.rowband {
+  flex: none;
+  border-bottom: 1px solid var(--border);
+}
+.rowband__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 16px 0 20px;
+  background: var(--selected);
+  color: var(--selected-ink);
+}
+.rowband__head svg {
+  color: var(--amber);
+  fill: var(--amber);
+}
+.rowband__head .section-label {
+  padding: 0;
+  color: var(--selected-ink);
+}
+.rowband__hint {
+  flex: 1;
+  text-align: right;
+  font-size: 12px;
+}
+.rowgroup__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 16px 0 20px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--chip);
+  color: var(--chip-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rowgroup__head svg {
+  width: 12px;
+  height: 12px;
+}
+.rowgroup__chev--open {
+  transform: rotate(90deg);
+}
+.rowgroup__name {
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.rowgroup__count {
+  color: var(--muted);
+  font-size: 12px;
+}
+.rowrail {
+  flex: none;
+  width: 230px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 10px;
+  border-right: 1px solid var(--border-soft);
+  background: var(--sidebar);
+  overflow: auto;
+}
+.rowrail .section-label {
+  padding: 0 8px 6px;
+}
+.rowrail__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rowrail__item svg {
+  flex: none;
+  color: var(--muted);
+}
+.rowrail__item:hover {
+  background: var(--hover);
+}
+.rowrail__item[aria-current="true"] {
+  background: var(--selected);
+  color: var(--selected-ink);
+}
+.rowrail__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12.5px;
+}
+.rowrail__count {
+  font-size: 12px;
+  color: var(--muted);
+}
+.rowrail__count span {
+  opacity: 0.7;
+}
+.rowrail__note {
+  margin: auto 0 0;
+  padding: 8px 8px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+/* A narrow window has no room for the rail; the group headings do its job. */
+@media (max-width: 900px) {
+  .rowrail,
+  .rowband__hint {
+    display: none;
+  }
+  .rowdialog .rowfields__item {
+    grid-template-columns: minmax(150px, 38%) minmax(0, 1fr) 56px;
+  }
 }
 .rowfields__dim {
   opacity: 0.6;

@@ -1,13 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ResultColumn } from "../api/types";
+import type { ColumnInfo, ResultColumn } from "../api/types";
 import { copyText } from "../lib/clipboard";
 import { findRanges, MAX_HITS, stepHit, type Range } from "../lib/find";
 import { findInRow, hitsLabel } from "../lib/rowFind";
-import { rowTitle, splitRow, type JsonField } from "../lib/sql";
+import {
+  isWide,
+  KIND_FILTERS,
+  rowObject,
+  type KindFilter,
+} from "../lib/rowGroups";
+import {
+  hasInexactNumber,
+  rowTitle,
+  splitRow,
+  type JsonField,
+} from "../lib/sql";
 import { useUi } from "../state/ui";
 import { FoldAllButton } from "./JsonSection";
 import { JsonText } from "./JsonText";
 import { ArrowLeftIcon } from "./Icons";
+import { Marked } from "./Marked";
 import { RowBody } from "./RowBody";
 import { useEscape } from "./useEscape";
 import { useJsonFold, useRevealHit } from "./useJsonFold";
@@ -21,7 +33,9 @@ const FOCUSABLE =
  * at rows one after another while the table stays in view.
  */
 export function RowDialog({
+  schema,
   table,
+  info,
   columns,
   row,
   position,
@@ -31,7 +45,10 @@ export function RowDialog({
   onJson,
   onClose,
 }: {
+  schema: string;
   table: string;
+  /** What the structure says about each column, by name; empty until it has loaded. */
+  info: Map<string, ColumnInfo>;
   columns: ResultColumn[];
   row: (string | null)[];
   position: number;
@@ -49,9 +66,18 @@ export function RowDialog({
   const opened = useRef<number | null>(null);
   const hideNull = useUi((s) => s.hideNull);
   const setHideNull = useUi((s) => s.setHideNull);
+  // The same pins as the grid: up to three columns that stay in view.
+  const pinned = useUi((s) => s.sqlPinned);
+  const togglePinned = useUi((s) => s.togglePinnedColumn);
+  const jsonView = useUi((s) => s.jsonView);
+  const setJsonView = useUi((s) => s.setJsonView);
   const split = useMemo(() => splitRow(columns, row), [columns, row]);
   const solo =
     json === null ? undefined : split.json.find((f) => f.index === json);
+  // A wide table gets groups and a kind filter; both are kept while moving between rows.
+  const wide = isWide(columns.length);
+  const [kind, setKind] = useState<KindFilter>("all");
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
 
   // Find: kept while moving between rows and between the list and one value.
   const [term, setTerm] = useState("");
@@ -63,8 +89,14 @@ export function RowDialog({
   );
   // One JSON value on its own is searched for every match inside it.
   const soloRanges = useMemo(
-    () => (solo ? findRanges(solo.pretty, term).slice(0, MAX_HITS) : []),
-    [solo, term],
+    () =>
+      solo
+        ? findRanges(jsonView === "raw" ? solo.raw : solo.pretty, term).slice(
+            0,
+            MAX_HITS,
+          )
+        : [],
+    [solo, term, jsonView],
   );
   const total = solo ? soloRanges.length : hits.total;
   const current = Math.min(at, Math.max(total - 1, 0));
@@ -151,7 +183,7 @@ export function RowDialog({
         type="search"
         className="find__input"
         aria-label={solo ? "Find in value" : "Find in row"}
-        placeholder={solo ? "Find in value" : "Find in row"}
+        placeholder={solo ? "Find in value" : "Find a column or a value"}
         value={term}
         onChange={(e) => {
           setTerm(e.target.value);
@@ -196,7 +228,7 @@ export function RowDialog({
     >
       <div
         ref={box}
-        className="rowdialog"
+        className={`rowdialog${wide || solo ? " rowdialog--tall" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label={solo ? columns[solo.index].name : "Row details"}
@@ -204,6 +236,21 @@ export function RowDialog({
           if (e.key === "Escape") {
             e.stopPropagation();
             escape();
+          } else if (
+            e.key === "/" &&
+            !e.metaKey &&
+            !e.ctrlKey &&
+            !e.altKey &&
+            !(
+              e.target instanceof HTMLInputElement ||
+              e.target instanceof HTMLTextAreaElement
+            )
+          ) {
+            // The sidebar also listens for "/"; inside the dialog it belongs to the search.
+            e.preventDefault();
+            e.stopPropagation();
+            search.current?.focus();
+            search.current?.select();
           } else if (
             (e.metaKey || e.ctrlKey) &&
             !e.shiftKey &&
@@ -248,12 +295,19 @@ export function RowDialog({
             searchBox={searchBox}
             ranges={soloRanges}
             current={term === "" ? -1 : current}
+            view={jsonView}
+            onView={(v) => {
+              setAt(0);
+              setJsonView(v);
+            }}
           />
         ) : (
           <>
             <div className="rowdialog__head">
               <div className="rowpanel__title">
-                <span className="rowpanel__label">{label}</span>
+                <span className="rowpanel__label">
+                  {schema}.{table} · {label} · {columns.length} columns
+                </span>
                 <span className="rowpanel__name mono">{title}</span>
               </div>
               <button
@@ -276,7 +330,42 @@ export function RowDialog({
               >
                 ↓
               </button>
+              <button
+                type="button"
+                className="btn btn--small"
+                onClick={() =>
+                  void copyText(
+                    JSON.stringify(
+                      rowObject(columns, row, split.json),
+                      null,
+                      2,
+                    ),
+                    "row as JSON",
+                  )
+                }
+              >
+                Copy row as JSON
+              </button>
+              {closeButton}
+            </div>
+            <div className="rowdialog__bar">
               {searchBox}
+              {wide && (
+                <div className="tabs" role="group" aria-label="Column kind">
+                  {KIND_FILTERS.map((k) => (
+                    <button
+                      key={k.id}
+                      type="button"
+                      className="tab"
+                      aria-pressed={kind === k.id}
+                      onClick={() => setKind(k.id)}
+                    >
+                      {k.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <span className="rowdialog__spacer" />
               <label className="rowdialog__check">
                 <input
                   type="checkbox"
@@ -285,7 +374,6 @@ export function RowDialog({
                 />
                 Hide null
               </label>
-              {closeButton}
             </div>
             <RowBody
               key={position}
@@ -293,8 +381,18 @@ export function RowDialog({
               row={row}
               variant="dialog"
               onOpenJson={open}
-              find={{ term, hits, current }}
-              hideNull={hideNull}
+              dialog={{
+                find: { term, hits, current },
+                hideNull,
+                onHideNull: setHideNull,
+                info,
+                pinned,
+                onPin: togglePinned,
+                kind,
+                grouped: wide,
+                collapsed,
+                onCollapsed: (next) => setCollapsed(next),
+              }}
             />
           </>
         )}
@@ -313,6 +411,8 @@ function SoloJson({
   searchBox,
   ranges,
   current,
+  view,
+  onView,
 }: {
   field: JsonField;
   name: string;
@@ -322,9 +422,15 @@ function SoloJson({
   searchBox: React.ReactNode;
   ranges: readonly Range[];
   current: number;
+  view: "formatted" | "raw";
+  onView: (view: "formatted" | "raw") => void;
 }) {
   const fold = useJsonFold(field.pretty, false);
-  useRevealHit(fold, field.pretty, ranges, current);
+  const raw = view === "raw";
+  useRevealHit(fold, field.pretty, raw ? [] : ranges, current);
+  // JSON.parse keeps only what a double can hold, so a big id would read differently here.
+  const inexact =
+    !raw && field.source === "json" && hasInexactNumber(field.raw);
   return (
     <>
       <div className="rowdialog__head">
@@ -334,31 +440,61 @@ function SoloJson({
           <span className="rowdialog__solotitle">
             <span className="rowpanel__name mono">{name}</span>
             <span className="badge mono">
-              {field.source === "json" ? "json" : "text"}
+              {field.source === "json"
+                ? "json"
+                : field.source === "array"
+                  ? "array"
+                  : "text"}
             </span>
             {field.source === "text" && (
               <span className="badge mono">json detected</span>
             )}
           </span>
         </div>
+        <div className="tabs" role="tablist" aria-label="Value view">
+          {(["formatted", "raw"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              className="tab"
+              aria-selected={view === v}
+              onClick={() => onView(v)}
+            >
+              {v === "formatted" ? "Formatted" : "Raw"}
+            </button>
+          ))}
+        </div>
         {searchBox}
-        <FoldAllButton fold={fold} labeled />
+        {!raw && <FoldAllButton fold={fold} labeled />}
         <button
           type="button"
           className="btn btn--small"
-          onClick={() => void copyText(field.pretty, name)}
+          onClick={() => void copyText(raw ? field.raw : field.pretty, name)}
         >
-          Copy JSON
+          {raw ? "Copy raw" : "Copy JSON"}
         </button>
         {closeButton}
       </div>
+      {inexact && (
+        <p className="rowdialog__notice" role="status">
+          A number in this value is too big to show exactly here. Open Raw to
+          see it as stored.
+        </p>
+      )}
       <div className="rowdialog__solo">
-        <JsonText
-          text={field.pretty}
-          ranges={ranges}
-          current={current}
-          folding={fold.folding}
-        />
+        {raw ? (
+          <pre className="code code--raw">
+            <Marked text={field.raw} ranges={ranges} current={current} />
+          </pre>
+        ) : (
+          <JsonText
+            text={field.pretty}
+            ranges={ranges}
+            current={current}
+            folding={fold.folding}
+          />
+        )}
       </div>
     </>
   );

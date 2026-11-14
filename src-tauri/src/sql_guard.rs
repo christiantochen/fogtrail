@@ -6,18 +6,46 @@
 //! The rule is an allow-list, and anything that can't be understood is refused:
 //! one statement, starting with SELECT, SHOW, DESCRIBE, EXPLAIN or WITH, that
 //! doesn't write files, take locks or run a statement hidden in a comment.
+//! PostgreSQL has its own dialect and its own list of functions that change
+//! something outside the tables (see [`Dialect`]).
 
 use std::ops::ControlFlow;
 
 use sqlparser::ast::{Expr, LockClause, Query, Select, SetExpr, Statement, Visit, Visitor};
-use sqlparser::dialect::MySqlDialect;
+use sqlparser::dialect::{Dialect as SqlDialect, MySqlDialect, PostgreSqlDialect};
 use sqlparser::parser::Parser;
 use sqlparser::tokenizer::{Token, Tokenizer};
 
 use crate::error::AppError;
 
-const ALLOWED: &str = "Fogtrail runs SELECT, SHOW, DESCRIBE, EXPLAIN and WITH only. \
-                       Nothing was sent to the server.";
+/// Which SQL dialect a statement is read in. Each driver names its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dialect {
+    MySql,
+    Postgres,
+}
+
+impl Dialect {
+    fn parser(self) -> Box<dyn SqlDialect> {
+        match self {
+            Dialect::MySql => Box::new(MySqlDialect {}),
+            Dialect::Postgres => Box::new(PostgreSqlDialect {}),
+        }
+    }
+
+    fn allowed(self) -> &'static str {
+        match self {
+            Dialect::MySql => {
+                "Fogtrail runs SELECT, SHOW, DESCRIBE, EXPLAIN and WITH only. \
+                 Nothing was sent to the server."
+            }
+            Dialect::Postgres => {
+                "Fogtrail runs SELECT, SHOW, EXPLAIN, VALUES and WITH only. \
+                 Nothing was sent to the server."
+            }
+        }
+    }
+}
 
 /// Functions that change something outside the tables: named locks and files.
 const BLOCKED_FUNCTIONS: [&str; 5] = [
@@ -28,23 +56,55 @@ const BLOCKED_FUNCTIONS: [&str; 5] = [
     "SET_USER_VARIABLE",
 ];
 
-fn blocked(what: &str) -> AppError {
-    AppError::Blocked(format!("{what} is not allowed. {ALLOWED}"))
+/// PostgreSQL functions that change the session, the server or the files, or take
+/// locks. The read-only transaction stops most writes on its own; these are refused
+/// before anything is sent, with a message that says why. `set_config` is the one that
+/// matters most: it could switch the session's read-only default off.
+const BLOCKED_PG_FUNCTIONS: [&str; 10] = [
+    "SET_CONFIG",
+    "PG_TERMINATE_BACKEND",
+    "PG_CANCEL_BACKEND",
+    "PG_RELOAD_CONF",
+    "PG_ROTATE_LOGFILE",
+    "PG_SWITCH_WAL",
+    "PG_CREATE_RESTORE_POINT",
+    "PG_PROMOTE",
+    "PG_WAL_REPLAY_PAUSE",
+    "PG_REPLICATION_SLOT_ADVANCE",
+];
+
+/// Families of PostgreSQL functions, refused by their prefix: advisory locks, large
+/// objects, server-side file reads and listings, and the dblink extension.
+const BLOCKED_PG_PREFIXES: [&str; 6] = [
+    "PG_ADVISORY_",
+    "PG_TRY_ADVISORY_",
+    "LO_",
+    "PG_READ_",
+    "PG_LS_",
+    "DBLINK",
+];
+
+fn blocked(what: &str, dialect: Dialect) -> AppError {
+    AppError::Blocked(format!("{what} is not allowed. {}", dialect.allowed()))
 }
 
 /// Ok when the statement may run. Otherwise `AppError::Blocked` with a sentence
 /// the UI can show as it is.
-pub fn check(sql: &str) -> Result<(), AppError> {
-    let dialect = MySqlDialect {};
-    let tokens = Tokenizer::new(&dialect, sql)
-        .tokenize()
-        .map_err(|e| AppError::Blocked(format!("Could not read this statement: {e}. {ALLOWED}")))?;
+pub fn check(sql: &str, which: Dialect) -> Result<(), AppError> {
+    let parser = which.parser();
+    let dialect: &dyn SqlDialect = parser.as_ref();
+    let tokens = Tokenizer::new(dialect, sql).tokenize().map_err(|e| {
+        AppError::Blocked(format!(
+            "Could not read this statement: {e}. {}",
+            which.allowed()
+        ))
+    })?;
 
     // Executable comments (`/*! ... */`) look like comments, but the server runs
     // what is inside them, and the tokenizer reads them as plain code. Refuse them
     // outright rather than guess.
-    if has_executable_comment(sql) {
-        return Err(blocked("A /*! */ comment"));
+    if which == Dialect::MySql && has_executable_comment(sql) {
+        return Err(blocked("A /*! */ comment", which));
     }
 
     // Only the words and symbols, with trailing semicolons dropped.
@@ -61,32 +121,46 @@ pub fn check(sql: &str) -> Result<(), AppError> {
         ));
     }
     if meaningful.iter().any(|t| matches!(t, Token::SemiColon)) {
-        return Err(blocked("Running more than one statement at once"));
+        return Err(blocked("Running more than one statement at once", which));
     }
 
     let first = match meaningful[0] {
         Token::Word(w) => w.value.to_ascii_uppercase(),
         Token::LParen => "(".to_string(),
-        other => return Err(blocked(&format!("Starting with `{other}`"))),
+        other => return Err(blocked(&format!("Starting with `{other}`"), which)),
     };
     match first.as_str() {
         // SHOW and DESCRIBE only ever read, so they don't need the full parse. That
         // keeps odd SHOW forms working (SHOW ENGINE INNODB STATUS, SHOW GRANTS).
-        "SHOW" | "DESCRIBE" | "DESC" => Ok(()),
-        "SELECT" | "WITH" | "EXPLAIN" | "(" => {
-            // INTO only has a place in a write (SELECT ... INTO OUTFILE). The parser
-            // doesn't read every form of it, so catch it here.
-            let has_into = meaningful.iter().any(|t| {
-                matches!(t, Token::Word(w)
-                    if w.quote_style.is_none() && w.value.eq_ignore_ascii_case("INTO"))
-            });
-            if has_into {
-                return Err(blocked("SELECT ... INTO (it writes a file or a variable)"));
-            }
-            check_parsed(sql, &dialect)
-        }
-        _ => Err(blocked(&first)),
+        "SHOW" => Ok(()),
+        "DESCRIBE" | "DESC" if which == Dialect::MySql => Ok(()),
+        "SELECT" | "WITH" | "EXPLAIN" | "(" => check_select(sql, &meaningful, dialect, which),
+        "VALUES" if which == Dialect::Postgres => check_select(sql, &meaningful, dialect, which),
+        _ => Err(blocked(&first, which)),
     }
+}
+
+/// The checks for a statement that can contain a query: no INTO, then the full parse.
+fn check_select(
+    sql: &str,
+    meaningful: &[&Token],
+    dialect: &dyn SqlDialect,
+    which: Dialect,
+) -> Result<(), AppError> {
+    // INTO only has a place in a write (SELECT ... INTO OUTFILE, or SELECT ... INTO
+    // new_table in PostgreSQL). The parser doesn't read every form of it, so catch it here.
+    let has_into = meaningful.iter().any(|t| {
+        matches!(t, Token::Word(w)
+            if w.quote_style.is_none() && w.value.eq_ignore_ascii_case("INTO"))
+    });
+    if has_into {
+        let what = match which {
+            Dialect::MySql => "SELECT ... INTO (it writes a file or a variable)",
+            Dialect::Postgres => "SELECT ... INTO (it creates a table)",
+        };
+        return Err(blocked(what, which));
+    }
+    check_parsed(sql, dialect, which)
 }
 
 /// True when the text has `/*!` or `/*M!` outside quotes and ordinary comments.
@@ -135,7 +209,7 @@ fn has_executable_comment(sql: &str) -> bool {
     false
 }
 
-fn check_parsed(sql: &str, dialect: &MySqlDialect) -> Result<(), AppError> {
+fn check_parsed(sql: &str, dialect: &dyn SqlDialect, which: Dialect) -> Result<(), AppError> {
     let mut statements = Parser::parse_sql(dialect, sql).map_err(|e| {
         // The same refusal covers a typo (a missing `;`) and valid SQL this
         // parser doesn't know, so say what it saw and don't blame the user.
@@ -144,11 +218,12 @@ fn check_parsed(sql: &str, dialect: &MySqlDialect) -> Result<(), AppError> {
         AppError::Blocked(format!(
             "Could not read this statement, so it was not sent. {detail}. \
              Check for a missing `;` or a typo. If the SQL is valid, Fogtrail \
-             may not support that syntax yet. {ALLOWED}"
+             may not support that syntax yet. {}",
+            which.allowed()
         ))
     })?;
     let Some(statement) = statements.pop().filter(|_| statements.is_empty()) else {
-        return Err(blocked("Running more than one statement at once"));
+        return Err(blocked("Running more than one statement at once", which));
     };
     match &statement {
         Statement::Query(_) => {}
@@ -156,14 +231,21 @@ fn check_parsed(sql: &str, dialect: &MySqlDialect) -> Result<(), AppError> {
             analyze, statement, ..
         } => {
             // EXPLAIN ANALYZE runs the statement. Only a query is safe to run that way.
-            if *analyze && !matches!(**statement, Statement::Query(_)) {
-                return Err(blocked("EXPLAIN ANALYZE of a statement that writes"));
+            // PostgreSQL also takes `EXPLAIN (ANALYZE) ...`, which the parser may not
+            // report as `analyze`, so there only a query is accepted at all.
+            let runs = *analyze || which == Dialect::Postgres;
+            if runs && !matches!(**statement, Statement::Query(_)) {
+                let what = match which {
+                    Dialect::MySql => "EXPLAIN ANALYZE of a statement that writes",
+                    Dialect::Postgres => "EXPLAIN of a statement that writes",
+                };
+                return Err(blocked(what, which));
             }
         }
-        Statement::ExplainTable { .. } => {}
-        other => return Err(blocked(&verb(other))),
+        Statement::ExplainTable { .. } if which == Dialect::MySql => {}
+        other => return Err(blocked(&verb(other), which)),
     }
-    match statement.visit(&mut Rules) {
+    match statement.visit(&mut Rules { which }) {
         ControlFlow::Break(why) => Err(why),
         ControlFlow::Continue(()) => Ok(()),
     }
@@ -179,19 +261,38 @@ fn verb(statement: &Statement) -> String {
         .to_ascii_uppercase()
 }
 
+/// A function's own name: no schema in front of it, no quotes around it, upper case.
+fn function_name(full: &str) -> String {
+    full.rsplit('.')
+        .next()
+        .unwrap_or(full)
+        .trim_matches('"')
+        .to_ascii_uppercase()
+}
+
 /// Walks the whole tree, so a forbidden thing nested in a subquery or a CTE is found too.
-struct Rules;
+struct Rules {
+    which: Dialect,
+}
 
 impl Visitor for Rules {
     type Break = AppError;
 
     fn pre_visit_query(&mut self, query: &Query) -> ControlFlow<AppError> {
         if let Some(LockClause { .. }) = query.locks.first() {
-            return ControlFlow::Break(blocked("Locking rows (FOR UPDATE, FOR SHARE)"));
+            return ControlFlow::Break(blocked("Locking rows (FOR UPDATE, FOR SHARE)", self.which));
         }
         match query.body.as_ref() {
             SetExpr::Insert(_) | SetExpr::Update(_) | SetExpr::Delete(_) | SetExpr::Merge(_) => {
-                ControlFlow::Break(blocked("A statement that writes"))
+                ControlFlow::Break(blocked(
+                    match self.which {
+                        Dialect::MySql => "A statement that writes",
+                        Dialect::Postgres => {
+                            "A statement that deletes, updates or inserts inside a WITH"
+                        }
+                    },
+                    self.which,
+                ))
             }
             _ => ControlFlow::Continue(()),
         }
@@ -199,16 +300,26 @@ impl Visitor for Rules {
 
     fn pre_visit_select(&mut self, select: &Select) -> ControlFlow<AppError> {
         if select.into.is_some() {
-            return ControlFlow::Break(blocked("SELECT ... INTO (it writes a file or a variable)"));
+            return ControlFlow::Break(blocked(
+                "SELECT ... INTO (it writes a file, a variable or a table)",
+                self.which,
+            ));
         }
         ControlFlow::Continue(())
     }
 
     fn pre_visit_expr(&mut self, expr: &Expr) -> ControlFlow<AppError> {
         if let Expr::Function(f) = expr {
-            let name = f.name.to_string().to_ascii_uppercase();
-            if BLOCKED_FUNCTIONS.contains(&name.as_str()) {
-                return ControlFlow::Break(blocked(&format!("The function {name}()")));
+            let name = function_name(&f.name.to_string());
+            let refused = match self.which {
+                Dialect::MySql => BLOCKED_FUNCTIONS.contains(&name.as_str()),
+                Dialect::Postgres => {
+                    BLOCKED_PG_FUNCTIONS.contains(&name.as_str())
+                        || BLOCKED_PG_PREFIXES.iter().any(|p| name.starts_with(p))
+                }
+            };
+            if refused {
+                return ControlFlow::Break(blocked(&format!("The function {name}()"), self.which));
             }
         }
         ControlFlow::Continue(())
@@ -220,13 +331,13 @@ mod tests {
     use super::*;
 
     fn allowed(sql: &str) {
-        if let Err(e) = check(sql) {
+        if let Err(e) = check(sql, Dialect::MySql) {
             panic!("should be allowed: {sql}\n  got: {e}");
         }
     }
 
     fn blocked_by(sql: &str, word: &str) {
-        match check(sql) {
+        match check(sql, Dialect::MySql) {
             Ok(()) => panic!("should be blocked: {sql}"),
             Err(AppError::Blocked(m)) => assert!(
                 m.contains(word),
@@ -239,7 +350,7 @@ mod tests {
     #[test]
     fn a_missing_semicolon_says_where_the_parser_stopped() {
         let sql = "select * from t where name = \"a\"\nselect * from t where name = \"a\"";
-        match check(sql) {
+        match check(sql, Dialect::MySql) {
             Err(AppError::Blocked(m)) => {
                 assert!(m.starts_with("Could not read this statement"), "got: {m}");
                 assert!(m.contains("Line: 2, Column: 1"), "got: {m}");
@@ -406,30 +517,125 @@ mod tests {
     #[test]
     fn empty_and_broken_input_is_refused_with_a_reason() {
         for sql in ["", "   ", "\n\n", ";", "-- only a comment", "/* nothing */"] {
-            match check(sql) {
+            match check(sql, Dialect::MySql) {
                 Err(AppError::Blocked(m)) => assert!(m.contains("nothing to run"), "{sql:?}: {m}"),
                 other => panic!("{sql:?} should say there is nothing to run, got {other:?}"),
             }
         }
         // Something the parser can't read is refused, not waved through.
         assert!(matches!(
-            check("SELECT FROM WHERE ((("),
+            check("SELECT FROM WHERE (((", Dialect::MySql),
             Err(AppError::Blocked(_))
         ));
         assert!(matches!(
-            check("SELECT 'unterminated"),
+            check("SELECT 'unterminated", Dialect::MySql),
             Err(AppError::Blocked(_))
         ));
-        assert!(matches!(check("1 + 1"), Err(AppError::Blocked(_))));
+        assert!(matches!(
+            check("1 + 1", Dialect::MySql),
+            Err(AppError::Blocked(_))
+        ));
     }
 
     #[test]
     fn the_message_says_nothing_was_sent() {
-        let Err(AppError::Blocked(m)) = check("DELETE FROM t") else {
+        let Err(AppError::Blocked(m)) = check("DELETE FROM t", Dialect::MySql) else {
             panic!("expected a block");
         };
         assert!(m.starts_with("DELETE is not allowed."));
         assert!(m.contains("SELECT, SHOW, DESCRIBE, EXPLAIN and WITH only"));
         assert!(m.contains("Nothing was sent to the server."));
+    }
+
+    fn pg(sql: &str) -> Result<(), AppError> {
+        check(sql, Dialect::Postgres)
+    }
+
+    #[test]
+    fn postgres_allows_reads() {
+        for sql in [
+            "SELECT * FROM orders WHERE id = 1",
+            "select 1;",
+            "SELECT payload -> 'a' ->> 'b', tags[1] FROM events WHERE tags @> ARRAY['x']",
+            "SELECT created_at AT TIME ZONE 'UTC' FROM events",
+            "WITH t AS (SELECT 1) SELECT * FROM t",
+            "VALUES (1), (2)",
+            "SHOW search_path",
+            "EXPLAIN SELECT * FROM orders",
+            "SELECT * FROM \"Weird Name\"",
+            "SELECT now(), count(*) FROM orders GROUP BY 1",
+        ] {
+            assert!(pg(sql).is_ok(), "{sql} should pass: {:?}", pg(sql));
+        }
+    }
+
+    #[test]
+    fn postgres_refuses_writes_and_settings() {
+        for sql in [
+            "INSERT INTO t VALUES (1)",
+            "UPDATE t SET a = 1",
+            "DELETE FROM t",
+            "TRUNCATE t",
+            "DROP TABLE t",
+            "CREATE TABLE x (a int)",
+            "COPY t TO '/tmp/x'",
+            "SELECT 1; SELECT 2",
+            "SET default_transaction_read_only = off",
+            "SET TRANSACTION READ WRITE",
+            "BEGIN",
+            "COMMIT",
+            "CALL do_it()",
+            "DO $$ BEGIN PERFORM 1; END $$",
+            "SELECT * INTO newtable FROM t",
+            "WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d",
+            "EXPLAIN ANALYZE DELETE FROM t",
+            "SELECT * FROM t FOR UPDATE",
+        ] {
+            assert!(
+                matches!(pg(sql), Err(AppError::Blocked(_))),
+                "{sql} should be blocked, got {:?}",
+                pg(sql)
+            );
+        }
+    }
+
+    #[test]
+    fn postgres_refuses_functions_that_change_things() {
+        for sql in [
+            "SELECT set_config('default_transaction_read_only', 'off', false)",
+            "SELECT pg_terminate_backend(1)",
+            "SELECT pg_cancel_backend(1)",
+            "SELECT lo_import('/etc/passwd')",
+            "SELECT pg_read_file('/etc/passwd')",
+            "SELECT dblink('x', 'DELETE FROM t')",
+            "SELECT * FROM t WHERE id = pg_advisory_lock(1)",
+            "SELECT PG_TERMINATE_BACKEND(1)",
+            "SELECT pg_catalog.set_config('a', 'b', false)",
+        ] {
+            assert!(
+                matches!(pg(sql), Err(AppError::Blocked(_))),
+                "{sql} should be blocked, got {:?}",
+                pg(sql)
+            );
+        }
+    }
+
+    #[test]
+    fn postgres_message_names_what_it_runs() {
+        let Err(AppError::Blocked(m)) = pg("DELETE FROM t") else {
+            panic!("expected a block");
+        };
+        assert!(
+            m.contains("SELECT, SHOW, EXPLAIN, VALUES and WITH only"),
+            "{m}"
+        );
+        assert!(m.contains("Nothing was sent to the server."));
+    }
+
+    #[test]
+    fn a_dialect_does_not_borrow_the_others_rules() {
+        // `DESCRIBE` is MySQL only; `VALUES` is a Postgres statement.
+        assert!(check("DESCRIBE orders", Dialect::MySql).is_ok());
+        assert!(pg("DESCRIBE orders").is_err());
     }
 }

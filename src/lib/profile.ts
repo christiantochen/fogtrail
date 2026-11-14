@@ -1,6 +1,23 @@
 import type { Profile } from "../api/types";
 
-export type DriverId = "redis" | "mysql";
+export type DriverId = "redis" | "mysql" | "postgres";
+
+/** The ways to connect with TLS to PostgreSQL, as the `sslmode` setting names them. */
+export type SslMode = "disable" | "require" | "verify-full";
+
+export const SSL_MODES: { value: SslMode; label: string; meta: string }[] = [
+  {
+    value: "require",
+    label: "Require",
+    meta: "Encrypt, don’t check who answers",
+  },
+  {
+    value: "verify-full",
+    label: "Verify full",
+    meta: "Encrypt and check the certificate and host",
+  },
+  { value: "disable", label: "Disable", meta: "No encryption (local servers)" },
+];
 
 export const DRIVERS: { id: DriverId; label: string; blurb: string }[] = [
   {
@@ -13,10 +30,19 @@ export const DRIVERS: { id: DriverId; label: string; blurb: string }[] = [
     label: "MySQL",
     blurb: "Tables, rows and read-only SQL queries.",
   },
+  {
+    id: "postgres",
+    label: "PostgreSQL",
+    blurb: "Schemas, tables, rows and read-only SQL queries.",
+  },
 ];
 
 export const defaultPort = (driver: DriverId) =>
-  driver === "mysql" ? 3306 : 6379;
+  driver === "mysql" ? 3306 : driver === "postgres" ? 5432 : 6379;
+
+/** Shown in lists and badges. */
+export const driverLabel = (driver: string) =>
+  driver === "mysql" ? "MySQL" : driver === "postgres" ? "PostgreSQL" : "Redis";
 
 /** Form fields as typed: numbers stay strings until validated. */
 export interface Draft {
@@ -30,6 +56,10 @@ export interface Draft {
   /** MySQL database name. Blank means none chosen yet. */
   schema: string;
   tls: boolean;
+  /** PostgreSQL database name. */
+  dbname: string;
+  /** PostgreSQL SSL mode. */
+  sslMode: SslMode;
 }
 
 export const emptyDraft = (driver: DriverId = "redis"): Draft => ({
@@ -41,11 +71,18 @@ export const emptyDraft = (driver: DriverId = "redis"): Draft => ({
   database: "0",
   schema: "",
   tls: false,
+  dbname: "",
+  sslMode: "require",
 });
 
 export const draftOf = (p: Profile): Draft => ({
-  driver: p.driver === "mysql" ? "mysql" : "redis",
+  driver: p.driver === "mysql" || p.driver === "postgres" ? p.driver : "redis",
   schema: p.schema ?? "",
+  dbname: p.dbname ?? "",
+  sslMode:
+    p.sslMode === "disable" || p.sslMode === "verify-full"
+      ? p.sslMode
+      : "require",
   name: p.name,
   host: p.host,
   port: String(p.port),
@@ -70,8 +107,11 @@ export function validate(d: Draft): Errors {
     (!wholeNumber(d.database) || Number(d.database) > 1023)
   )
     e.database = "0 or more.";
-  if (d.driver === "mysql" && !d.username.trim()) e.username = "Enter a user.";
+  if (d.driver !== "redis" && !d.username.trim()) e.username = "Enter a user.";
+  if (d.driver === "postgres" && !d.dbname.trim())
+    e.dbname = "Enter a database.";
   if (d.schema.trim().length > 64) e.schema = "64 characters at most.";
+  if (d.dbname.trim().length > 63) e.dbname = "63 characters at most.";
   return e;
 }
 
@@ -86,8 +126,11 @@ export function toProfile(d: Draft, id = ""): Profile {
     host: d.host.trim(),
     port: Number(d.port),
     username: username === "" ? null : username,
-    database: mysql ? 0 : Number(d.database),
+    database: d.driver === "redis" ? Number(d.database) : 0,
     schema: mysql && d.schema.trim() !== "" ? d.schema.trim() : null,
-    tls: d.tls,
+    // PostgreSQL has its own SSL mode; the switch is for the others.
+    tls: d.driver === "postgres" ? d.sslMode !== "disable" : d.tls,
+    dbname: d.driver === "postgres" ? d.dbname.trim() : null,
+    sslMode: d.driver === "postgres" ? d.sslMode : null,
   };
 }

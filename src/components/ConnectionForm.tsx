@@ -9,6 +9,7 @@ import {
 import type { AppError, Profile } from "../api/types";
 import {
   DRIVERS,
+  SSL_MODES,
   defaultPort,
   draftOf,
   emptyDraft,
@@ -28,6 +29,7 @@ import { copyText } from "../lib/clipboard";
 import { useUi } from "../state/ui";
 import { Check, Lock } from "./Icons";
 import { Switch } from "./Switch";
+import { Dropdown } from "./Dropdown";
 import { dropBrowsingCaches } from "../lib/refreshAll";
 
 export function ConnectionForm({
@@ -71,6 +73,8 @@ export function ConnectionForm({
     }));
   };
   const mysql = draft.driver === "mysql";
+  const postgres = draft.driver === "postgres";
+  const sql = mysql || postgres;
 
   // Pasting a redis:// or mysql:// URL into Host fills the form. Anything that fails to
   // parse is refused as a whole, so nothing the user typed is lost.
@@ -167,7 +171,7 @@ export function ConnectionForm({
           autoFocus
           value={draft.name}
           onChange={(e) => set("name", e.target.value)}
-          placeholder={mysql ? "shop-prod" : "local-redis"}
+          placeholder={sql ? "shop-prod" : "local-redis"}
         />
       </Field>
 
@@ -180,7 +184,7 @@ export function ConnectionForm({
           <input
             className="mono"
             value={draft.host}
-            placeholder={`Host, or paste a ${mysql ? "mysql" : "redis"}:// URL`}
+            placeholder={`Host, or paste a ${draft.driver}:// URL`}
             onPaste={onPasteHost}
             onChange={(e) => {
               setUrlNote(null);
@@ -213,20 +217,31 @@ export function ConnectionForm({
 
       <div className="form__row">
         <Field
-          label={mysql ? "User" : "Username (ACL, optional)"}
+          label={sql ? "User" : "Username (ACL, optional)"}
           error={err("username")}
           grow
         >
           <input
             className="mono"
-            placeholder={mysql ? "fogtrail" : "default"}
+            placeholder={sql ? "fogtrail" : "default"}
             value={draft.username}
             onChange={(e) => set("username", e.target.value)}
             autoCapitalize="off"
             spellCheck={false}
           />
         </Field>
-        {mysql ? (
+        {postgres ? (
+          <Field label="Database" error={err("dbname")} width={200}>
+            <input
+              className="mono"
+              placeholder="shop"
+              value={draft.dbname}
+              onChange={(e) => set("dbname", e.target.value)}
+              autoCapitalize="off"
+              spellCheck={false}
+            />
+          </Field>
+        ) : mysql ? (
           <Field label="Database (optional)" error={err("schema")} width={200}>
             <input
               className="mono"
@@ -273,22 +288,40 @@ export function ConnectionForm({
 
       <UrlCopy draft={draft} password={password} saved={!!profile} />
 
-      {mysql && <ReadOnlyUserTip draft={draft} />}
+      {sql && <ReadOnlyUserTip draft={draft} />}
 
       <div className="panel">
-        <div className="toggle">
-          <div>
-            <div className="toggle__title">Use TLS</div>
-            <div className="muted">
-              Encrypt the connection. Most managed servers require it.
+        {postgres ? (
+          <div className="toggle">
+            <div>
+              <div className="toggle__title">SSL mode</div>
+              <div className="muted">
+                Most managed servers require encryption. Use Verify full to
+                check the certificate too.
+              </div>
             </div>
+            <Dropdown
+              label="SSL mode"
+              value={draft.sslMode}
+              onChange={(v) => set("sslMode", v)}
+              options={SSL_MODES}
+            />
           </div>
-          <Switch
-            label="Use TLS"
-            checked={draft.tls}
-            onChange={(v) => set("tls", v)}
-          />
-        </div>
+        ) : (
+          <div className="toggle">
+            <div>
+              <div className="toggle__title">Use TLS</div>
+              <div className="muted">
+                Encrypt the connection. Most managed servers require it.
+              </div>
+            </div>
+            <Switch
+              label="Use TLS"
+              checked={draft.tls}
+              onChange={(v) => set("tls", v)}
+            />
+          </div>
+        )}
         <div className="toggle toggle--last">
           <div>
             <div className="toggle__title">Read-only</div>
@@ -480,18 +513,24 @@ function UrlCopy({
 /** The server is the strongest read-only guard, so the form says how to set one up. */
 function ReadOnlyUserTip({ draft }: { draft: Draft }) {
   const user = draft.username.trim() || "fogtrail";
-  const db = draft.schema.trim() || "your_database";
+  const postgres = draft.driver === "postgres";
+  const db =
+    (postgres ? draft.dbname.trim() : draft.schema.trim()) || "your_database";
   const quote = (s: string) => s.replace(/'/g, "''");
+  const ident = (s: string) => `"${s.replace(/"/g, '""')}"`;
+  const script = postgres
+    ? `CREATE ROLE ${ident(user)} LOGIN PASSWORD '<password>';\nGRANT CONNECT ON DATABASE ${ident(db)} TO ${ident(user)};\nGRANT USAGE ON SCHEMA public TO ${ident(user)};\nGRANT SELECT ON ALL TABLES IN SCHEMA public TO ${ident(user)};`
+    : `CREATE USER '${quote(user)}'@'%' IDENTIFIED BY '<password>';\nGRANT SELECT, SHOW VIEW ON \`${db}\`.* TO '${quote(user)}'@'%';`;
   return (
     <div className="panel dbtip">
-      <div className="toggle__title">Safer with a read-only MySQL user</div>
+      <div className="toggle__title">
+        Safer with a read-only {postgres ? "PostgreSQL role" : "MySQL user"}
+      </div>
       <p className="muted">
         Fogtrail only sends read statements, and the server enforces it too.
-        Create a user that can only read:
+        Create {postgres ? "a role" : "a user"} that can only read:
       </p>
-      <pre className="code code--tip">
-        {`CREATE USER '${quote(user)}'@'%' IDENTIFIED BY '<password>';\nGRANT SELECT, SHOW VIEW ON \`${db}\`.* TO '${quote(user)}'@'%';`}
-      </pre>
+      <pre className="code code--tip">{script}</pre>
     </div>
   );
 }

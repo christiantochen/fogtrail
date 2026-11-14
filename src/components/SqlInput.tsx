@@ -8,7 +8,8 @@ import {
   useState,
 } from "react";
 import { useCompletionKnown } from "../api/queries";
-import { lineCount } from "../lib/sql";
+import { lineCount, sqlDialectOf, type SqlDialect } from "../lib/sql";
+import { useUi } from "../state/ui";
 import { type Item, contextAt, suggest } from "../lib/sqlComplete";
 import {
   HIGHLIGHT_LIMIT,
@@ -32,10 +33,10 @@ const TAG: Record<Item["kind"], string> = {
 };
 
 /** The text with its colours, drawn behind the transparent textarea. */
-function Coloured({ text }: { text: string }) {
+function Coloured({ text, dialect }: { text: string; dialect: SqlDialect }) {
   const parts = useMemo(() => {
     if (text.length > HIGHLIGHT_LIMIT) return [text];
-    return tokenize(text).map((t: Token, i) => {
+    return tokenize(text, dialect).map((t: Token, i) => {
       const cls = tokenClass(text, t);
       const s = text.slice(t.start, t.end);
       return cls ? (
@@ -46,7 +47,7 @@ function Coloured({ text }: { text: string }) {
         s
       );
     });
-  }, [text]);
+  }, [text, dialect]);
   // The extra line break keeps a last empty line as tall as the textarea draws it.
   return (
     <>
@@ -95,7 +96,11 @@ export function SqlInput({ value, onChange, onRun, schema }: Props) {
   // Set while a suggestion is being inserted, so the insert doesn't open the list again.
   const inserting = useRef(false);
 
-  const ctx = useMemo(() => contextAt(value, caret), [value, caret]);
+  const dialect = sqlDialectOf(useUi((s) => s.connected?.driver));
+  const ctx = useMemo(
+    () => contextAt(value, caret, dialect),
+    [value, caret, dialect],
+  );
   const known = useCompletionKnown(schema, ctx.refs, ctx.qualifier);
   const items = useMemo(
     () => (open ? suggest(ctx, known, manual) : []),
@@ -201,7 +206,7 @@ export function SqlInput({ value, onChange, onRun, schema }: Props) {
             {"0".repeat(20)}
           </span>
           <pre ref={colours} className="editor__hl mono" aria-hidden="true">
-            <Coloured text={value} />
+            <Coloured text={value} dialect={dialect} />
           </pre>
           <textarea
             ref={area}

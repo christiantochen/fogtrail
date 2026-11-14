@@ -3,6 +3,7 @@
 //! so adding a database means adding a module here, not changing the commands.
 
 pub mod mysql;
+pub mod postgres;
 pub mod redis;
 
 use std::sync::Arc;
@@ -19,7 +20,7 @@ pub struct ConnectionInfo {
     pub driver: String,
     pub address: String,
     pub database: i64,
-    /// Which screen the UI shows: `"keyValue"` for Redis and friends, `"sql"` for MySQL.
+    /// Which screen the UI shows: `"keyValue"` for Redis and friends, `"sql"` for MySQL and PostgreSQL.
     pub store: String,
 }
 
@@ -228,12 +229,12 @@ pub trait KeyValueDriver: Driver {
     ) -> Result<StreamPage, AppError>;
 }
 
-/// A schema (a MySQL "database") the connected user can see.
+/// A schema the connected user can see: a MySQL "database" or a PostgreSQL schema.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SchemaInfo {
     pub name: String,
-    /// Built-in schemas such as `mysql` and `information_schema`.
+    /// Built-in schemas such as `mysql`, `information_schema` and `pg_catalog`.
     pub system: bool,
 }
 
@@ -241,7 +242,7 @@ pub struct SchemaInfo {
 #[serde(rename_all = "camelCase")]
 pub struct TableInfo {
     pub name: String,
-    /// `"table"` or `"view"`.
+    /// `"table"` or `"view"`; PostgreSQL adds `"matview"` and `"foreign"`.
     pub kind: String,
     /// What the server's statistics say. Never an exact count; `None` for views.
     pub estimated_rows: Option<u64>,
@@ -268,6 +269,8 @@ pub struct IndexInfo {
     pub unique: bool,
     pub columns: Vec<String>,
     pub index_type: String,
+    /// The statement that would create the index (PostgreSQL). MySQL leaves it out.
+    pub definition: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -337,7 +340,7 @@ pub struct QueryResult {
     pub elapsed_ms: u64,
 }
 
-/// Stores browsed as schemas, tables and rows (MySQL).
+/// Stores browsed as schemas, tables and rows (MySQL, PostgreSQL).
 #[async_trait]
 pub trait SqlDriver: Driver {
     async fn list_schemas(&self) -> Result<Vec<SchemaInfo>, AppError>;

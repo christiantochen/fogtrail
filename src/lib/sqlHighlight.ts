@@ -28,7 +28,11 @@ const WORD_PART = /[A-Za-z0-9_$\u0080-￿]/;
 const DIGIT = /[0-9]/;
 
 /** Splits SQL into tokens that together cover the whole text. */
-export function tokenize(sql: string): Token[] {
+export function tokenize(
+  sql: string,
+  dialect: "mysql" | "postgres" = "mysql",
+): Token[] {
+  const pg = dialect === "postgres";
   const out: Token[] = [];
   const n = sql.length;
   let i = 0;
@@ -42,7 +46,7 @@ export function tokenize(sql: string): Token[] {
       while (i < n && /\s/.test(sql[i])) i++;
       push("space", start, i);
     } else if (
-      c === "#" ||
+      (c === "#" && !pg) ||
       (c === "-" && sql[i + 1] === "-" && (i + 2 >= n || /\s/.test(sql[i + 2])))
     ) {
       while (i < n && sql[i] !== "\n") i++;
@@ -54,11 +58,12 @@ export function tokenize(sql: string): Token[] {
       const closed = i < n;
       i = closed ? i + 2 : n;
       push("comment", start, i, !closed);
-    } else if (c === "'" || c === '"') {
+    } else if (c === "'" || (c === '"' && !pg)) {
       i++;
       let closed = false;
       while (i < n) {
-        if (sql[i] === "\\") {
+        // In PostgreSQL a backslash is an ordinary character inside a string.
+        if (sql[i] === "\\" && !pg) {
           i += 2;
         } else if (sql[i] === c) {
           // A doubled quote is a quote inside the string.
@@ -72,12 +77,14 @@ export function tokenize(sql: string): Token[] {
       }
       i = Math.min(i, n);
       push("string", start, i, !closed);
-    } else if (c === "`") {
+    } else if (c === (pg ? '"' : "`")) {
+      // MySQL quotes names with backticks, PostgreSQL with double quotes.
+      const q = c;
       i++;
       let closed = false;
       while (i < n) {
-        if (sql[i] === "`") {
-          if (sql[i + 1] === "`") i += 2;
+        if (sql[i] === q) {
+          if (sql[i + 1] === q) i += 2;
           else {
             i++;
             closed = true;

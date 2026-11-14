@@ -4,6 +4,7 @@ import { useProfiles } from "../api/queries";
 import { useUi } from "../state/ui";
 import { Dropdown } from "./Dropdown";
 import { dropBrowsingCaches } from "../lib/refreshAll";
+import { driverLabel } from "../lib/profile";
 
 /** One-step switch between saved connections. Switching closes the open one. */
 export function ConnectionSwitch() {
@@ -30,7 +31,7 @@ export function ConnectionSwitch() {
         options={list.map((p) => ({
           value: p.id,
           label: p.name,
-          meta: p.driver === "mysql" ? "MySQL" : "Redis",
+          meta: driverLabel(p.driver),
         }))}
       />
       {change.isPending && <span className="muted">Switching…</span>}
