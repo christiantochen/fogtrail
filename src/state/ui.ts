@@ -30,6 +30,9 @@ function remember(
   return next;
 }
 
+/** The tabs of an open table. Indexes is for PostgreSQL. */
+export type SqlTab = "data" | "structure" | "indexes";
+
 interface UiState {
   /** What splits key names into folders. Empty means a flat list. */
   delimiter: string;
@@ -54,7 +57,10 @@ interface UiState {
   sqlTable: string | null;
   theme: Theme;
   setTheme: (theme: Theme) => void;
-  sqlTab: "data" | "structure";
+  sqlTab: SqlTab;
+  /** How one JSON value is shown in the row dialog. Kept for the session. */
+  jsonView: "formatted" | "raw";
+  setJsonView: (view: "formatted" | "raw") => void;
   /** Rows skipped before the page on screen. */
   sqlOffset: number;
   /** A SQL expression narrowing the rows on screen (the part after WHERE). */
@@ -71,7 +77,7 @@ interface UiState {
   setSqlText: (text: string) => void;
   selectSchema: (schema: string | null) => void;
   selectTable: (table: string | null) => void;
-  setSqlTab: (tab: "data" | "structure") => void;
+  setSqlTab: (tab: SqlTab) => void;
   setSqlOffset: (offset: number) => void;
   /** Changing the filter or the sort goes back to the first page. */
   setSqlFilter: (filter: string) => void;
@@ -221,6 +227,8 @@ export const useUi = create<UiState>((set) => ({
       sqlQueryOpen: false,
     }),
   setSqlTab: (sqlTab) => set({ sqlTab }),
+  jsonView: "formatted",
+  setJsonView: (jsonView) => set({ jsonView }),
   setSqlOffset: (sqlOffset) => set({ sqlOffset: Math.max(0, sqlOffset) }),
   setSqlFilter: (sqlFilter) => set({ sqlFilter, sqlOffset: 0 }),
   setSqlSort: (sqlSort) => set({ sqlSort, sqlOffset: 0 }),

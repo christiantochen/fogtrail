@@ -300,7 +300,8 @@ impl SqlDriver for PostgresDriver {
             "SELECT ic.relname::text, i.indisunique::text, am.amname::text, \
                     (i.indpred IS NOT NULL)::text, i.indisprimary::text, \
                     (SELECT string_agg(pg_get_indexdef(i.indexrelid, k, true), chr(31) ORDER BY k) \
-                       FROM generate_series(1, i.indnkeyatts) k) \
+                       FROM generate_series(1, i.indnkeyatts) k), \
+                    pg_get_indexdef(i.indexrelid) \
              FROM pg_index i \
              JOIN pg_class ic ON ic.oid = i.indexrelid \
              JOIN pg_class c ON c.oid = i.indrelid \
@@ -356,6 +357,7 @@ impl SqlDriver for PostgresDriver {
             indexes: index_rows
                 .iter()
                 .map(|r| IndexInfo {
+                    definition: text(r, 6),
                     name: text(r, 0).unwrap_or_default(),
                     unique: text(r, 1).as_deref() == Some("true"),
                     columns: text(r, 5)

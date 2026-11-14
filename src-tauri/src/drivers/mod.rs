@@ -269,6 +269,8 @@ pub struct IndexInfo {
     pub unique: bool,
     pub columns: Vec<String>,
     pub index_type: String,
+    /// The statement that would create the index (PostgreSQL). MySQL leaves it out.
+    pub definition: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

@@ -14,6 +14,7 @@ const json = [
   {
     index: 4,
     pretty: '[\n  {\n    "tax_rate": 0.09\n  }\n]',
+    raw: '[{"tax_rate": 0.09}]',
     source: "json" as const,
   },
 ];
@@ -35,7 +36,12 @@ describe("findInRow", () => {
 
   it("counts every match inside a JSON value as one hit for its column", () => {
     const two = [
-      { index: 4, pretty: '{"a": "zz", "b": "zz"}', source: "json" as const },
+      {
+        index: 4,
+        pretty: '{"a": "zz", "b": "zz"}',
+        raw: '{"a": "zz", "b": "zz"}',
+        source: "json" as const,
+      },
     ];
     const h = findInRow(columns, row, two, "zz");
     expect(h.fields).toEqual([{ index: 4, name: [], value: [], json: 2 }]);

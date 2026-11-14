@@ -3,11 +3,17 @@ import type { ResultColumn } from "../api/types";
 import { copyText } from "../lib/clipboard";
 import { findRanges, MAX_HITS, stepHit, type Range } from "../lib/find";
 import { findInRow, hitsLabel } from "../lib/rowFind";
-import { rowTitle, splitRow, type JsonField } from "../lib/sql";
+import {
+  hasInexactNumber,
+  rowTitle,
+  splitRow,
+  type JsonField,
+} from "../lib/sql";
 import { useUi } from "../state/ui";
 import { FoldAllButton } from "./JsonSection";
 import { JsonText } from "./JsonText";
 import { ArrowLeftIcon } from "./Icons";
+import { Marked } from "./Marked";
 import { RowBody } from "./RowBody";
 import { useEscape } from "./useEscape";
 import { useJsonFold, useRevealHit } from "./useJsonFold";
@@ -49,6 +55,8 @@ export function RowDialog({
   const opened = useRef<number | null>(null);
   const hideNull = useUi((s) => s.hideNull);
   const setHideNull = useUi((s) => s.setHideNull);
+  const jsonView = useUi((s) => s.jsonView);
+  const setJsonView = useUi((s) => s.setJsonView);
   const split = useMemo(() => splitRow(columns, row), [columns, row]);
   const solo =
     json === null ? undefined : split.json.find((f) => f.index === json);
@@ -63,8 +71,14 @@ export function RowDialog({
   );
   // One JSON value on its own is searched for every match inside it.
   const soloRanges = useMemo(
-    () => (solo ? findRanges(solo.pretty, term).slice(0, MAX_HITS) : []),
-    [solo, term],
+    () =>
+      solo
+        ? findRanges(jsonView === "raw" ? solo.raw : solo.pretty, term).slice(
+            0,
+            MAX_HITS,
+          )
+        : [],
+    [solo, term, jsonView],
   );
   const total = solo ? soloRanges.length : hits.total;
   const current = Math.min(at, Math.max(total - 1, 0));
@@ -248,6 +262,11 @@ export function RowDialog({
             searchBox={searchBox}
             ranges={soloRanges}
             current={term === "" ? -1 : current}
+            view={jsonView}
+            onView={(v) => {
+              setAt(0);
+              setJsonView(v);
+            }}
           />
         ) : (
           <>
@@ -313,6 +332,8 @@ function SoloJson({
   searchBox,
   ranges,
   current,
+  view,
+  onView,
 }: {
   field: JsonField;
   name: string;
@@ -322,9 +343,15 @@ function SoloJson({
   searchBox: React.ReactNode;
   ranges: readonly Range[];
   current: number;
+  view: "formatted" | "raw";
+  onView: (view: "formatted" | "raw") => void;
 }) {
   const fold = useJsonFold(field.pretty, false);
-  useRevealHit(fold, field.pretty, ranges, current);
+  const raw = view === "raw";
+  useRevealHit(fold, field.pretty, raw ? [] : ranges, current);
+  // JSON.parse keeps only what a double can hold, so a big id would read differently here.
+  const inexact =
+    !raw && field.source === "json" && hasInexactNumber(field.raw);
   return (
     <>
       <div className="rowdialog__head">
@@ -334,31 +361,61 @@ function SoloJson({
           <span className="rowdialog__solotitle">
             <span className="rowpanel__name mono">{name}</span>
             <span className="badge mono">
-              {field.source === "json" ? "json" : "text"}
+              {field.source === "json"
+                ? "json"
+                : field.source === "array"
+                  ? "array"
+                  : "text"}
             </span>
             {field.source === "text" && (
               <span className="badge mono">json detected</span>
             )}
           </span>
         </div>
+        <div className="tabs" role="tablist" aria-label="Value view">
+          {(["formatted", "raw"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              className="tab"
+              aria-selected={view === v}
+              onClick={() => onView(v)}
+            >
+              {v === "formatted" ? "Formatted" : "Raw"}
+            </button>
+          ))}
+        </div>
         {searchBox}
-        <FoldAllButton fold={fold} labeled />
+        {!raw && <FoldAllButton fold={fold} labeled />}
         <button
           type="button"
           className="btn btn--small"
-          onClick={() => void copyText(field.pretty, name)}
+          onClick={() => void copyText(raw ? field.raw : field.pretty, name)}
         >
-          Copy JSON
+          {raw ? "Copy raw" : "Copy JSON"}
         </button>
         {closeButton}
       </div>
+      {inexact && (
+        <p className="rowdialog__notice" role="status">
+          A number in this value is too big to show exactly here. Open Raw to
+          see it as stored.
+        </p>
+      )}
       <div className="rowdialog__solo">
-        <JsonText
-          text={field.pretty}
-          ranges={ranges}
-          current={current}
-          folding={fold.folding}
-        />
+        {raw ? (
+          <pre className="code code--raw">
+            <Marked text={field.raw} ranges={ranges} current={current} />
+          </pre>
+        ) : (
+          <JsonText
+            text={field.pretty}
+            ranges={ranges}
+            current={current}
+            folding={fold.folding}
+          />
+        )}
       </div>
     </>
   );

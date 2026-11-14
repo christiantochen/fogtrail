@@ -790,6 +790,7 @@ fn group_indexes(rows: Vec<(String, bool, String, String)>) -> Vec<IndexInfo> {
         match out.last_mut() {
             Some(last) if last.name == name => last.columns.push(column),
             _ => out.push(IndexInfo {
+                definition: None,
                 name,
                 unique,
                 columns: vec![column],

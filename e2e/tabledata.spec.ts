@@ -32,7 +32,7 @@ test.describe("the table's data view", () => {
     await openOrders(page);
     const grid = page.getByRole("table", { name: "Rows of orders" });
     const first = grid.locator("tbody tr").nth(0);
-    await expect(first.locator(".jchip")).toHaveText("{ } 2 items");
+    await expect(first.locator(".jchip")).toHaveText("[ ] 2 items");
     await expect(grid.locator("tbody tr").nth(1).locator(".jchip")).toHaveText(
       "{ } 1 key",
     );

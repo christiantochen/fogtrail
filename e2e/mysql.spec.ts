@@ -68,6 +68,13 @@ test.describe("browsing MySQL", () => {
     await expect(page.getByRole("button", { name: "Previous" })).toBeDisabled();
   });
 
+  test("MySQL has no separate Indexes tab", async ({ page }) => {
+    await openShop(page);
+    await table(page, /^orders/).click();
+    await expect(page.getByRole("tab", { name: "Structure" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Indexes" })).toHaveCount(0);
+  });
+
   test("Structure lists columns, indexes and foreign keys", async ({
     page,
   }) => {

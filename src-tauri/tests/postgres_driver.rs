@@ -173,6 +173,11 @@ async fn structure_has_columns_indexes_and_foreign_keys() {
         .find(|i| i.name == "idx_orders_day")
         .unwrap();
     assert!(!expr.columns.is_empty());
+    let def = partial.definition.as_deref().unwrap_or_default();
+    assert!(
+        def.starts_with("CREATE INDEX idx_orders_big ON") && def.contains("WHERE"),
+        "{def}"
+    );
     let fk = s.foreign_keys.first().unwrap();
     assert_eq!(fk.ref_table, "customers");
     assert_eq!(fk.ref_schema, "public");

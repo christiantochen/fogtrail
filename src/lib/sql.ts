@@ -185,8 +185,10 @@ export interface JsonField {
   index: number;
   /** The value laid out over several lines. */
   pretty: string;
-  /** A JSON column, or a text column that happens to hold a JSON object or array. */
-  source: "json" | "text";
+  /** The value exactly as the server sent it. */
+  raw: string;
+  /** A JSON column, a text column that happens to hold JSON, or a PostgreSQL array. */
+  source: "json" | "text" | "array";
 }
 
 /**
@@ -196,17 +198,21 @@ export interface JsonField {
 export function jsonOf(
   typeName: string,
   value: string | null,
-): { pretty: string; source: JsonField["source"] } | null {
+): { pretty: string; raw: string; source: JsonField["source"] } | null {
   if (value === null) return null;
   if (isJsonType(typeName)) {
     const pretty = prettyJson(value);
-    return pretty ? { pretty, source: "json" } : null;
+    return pretty ? { pretty, raw: value, source: "json" } : null;
+  }
+  if (isArrayType(typeName)) {
+    const pretty = arrayJson(typeName, value);
+    return pretty ? { pretty, raw: value, source: "array" } : null;
   }
   if (!isTextType(typeName) || value.length > TEXT_JSON_LIMIT) return null;
   const t = value.trim();
   if (!(t.startsWith("{") || t.startsWith("["))) return null;
   const pretty = prettyJson(t);
-  return pretty ? { pretty, source: "text" } : null;
+  return pretty ? { pretty, raw: value, source: "text" } : null;
 }
 
 /** What a row is called in the row views: "orders · id 48213", or just the table without an id. */
@@ -242,6 +248,146 @@ export function splitTimestamp(text: string): [string, string] | null {
       text,
     );
   return m ? [m[1], m[2]] : null;
+}
+
+/** PostgreSQL names an array type after its element: `TEXT[]`, `INT4[]`. */
+export const isArrayType = (typeName: string) => typeName.endsWith("[]");
+
+/** A parsed PostgreSQL array. Elements are text, null, or a nested array. */
+export type PgArray = (string | null | PgArray)[];
+
+/**
+ * Reads PostgreSQL's array text, such as `{a,"b c",NULL,{1,2}}`. Null when the text is not
+ * an array or is cut off, so a caller can fall back to showing it as it is.
+ */
+export function parsePgArray(text: string): PgArray | null {
+  // A value can start with its bounds: `[0:2]={a,b,c}`.
+  const s = text.trim().replace(/^\[[^\]]*\]=/, "");
+  let i = 0;
+  const list = (): PgArray | null => {
+    if (s[i] !== "{") return null;
+    i++;
+    const out: PgArray = [];
+    if (s[i] === "}") {
+      i++;
+      return out;
+    }
+    for (;;) {
+      let item: string | null | PgArray;
+      if (s[i] === "{") {
+        const inner = list();
+        if (inner === null) return null;
+        item = inner;
+      } else if (s[i] === '"') {
+        i++;
+        let v = "";
+        let closed = false;
+        while (i < s.length) {
+          if (s[i] === "\\") {
+            v += s[i + 1] ?? "";
+            i += 2;
+          } else if (s[i] === '"') {
+            i++;
+            closed = true;
+            break;
+          } else v += s[i++];
+        }
+        if (!closed) return null;
+        item = v;
+      } else {
+        let j = i;
+        while (j < s.length && s[j] !== "," && s[j] !== "}") j++;
+        const word = s.slice(i, j).trim();
+        if (word === "") return null;
+        // Only a bare NULL is null. A quoted "NULL" is the word.
+        item = word.toUpperCase() === "NULL" ? null : word;
+        i = j;
+      }
+      out.push(item);
+      if (s[i] === ",") {
+        i++;
+        continue;
+      }
+      if (s[i] === "}") {
+        i++;
+        return out;
+      }
+      return null;
+    }
+  };
+  const parsed = list();
+  return parsed !== null && i === s.length ? parsed : null;
+}
+
+/** A PostgreSQL array as JSON over several lines, with numbers and booleans as such. */
+export function arrayJson(typeName: string, text: string): string | null {
+  const parsed = parsePgArray(text);
+  if (parsed === null) return null;
+  const base = typeName.slice(0, -2).toUpperCase();
+  const numeric = isNumericType(base);
+  const conv = (v: string | null | PgArray): unknown => {
+    if (Array.isArray(v)) return v.map(conv);
+    if (v === null) return null;
+    if (base === "BOOL") return v === "t" ? true : v === "f" ? false : v;
+    // Only a number that survives the trip to JSON unchanged is turned into one.
+    if (numeric && /^-?\d+(\.\d+)?$/.test(v) && String(Number(v)) === v)
+      return Number(v);
+    return v;
+  };
+  return JSON.stringify(parsed.map(conv), null, 2);
+}
+
+/**
+ * True when a JSON text holds a number that JSON.parse cannot keep exactly (a 19-digit id,
+ * say), so the formatted view would show a different one.
+ */
+export function hasInexactNumber(text: string): boolean {
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inString) {
+      if (c === "\\") i++;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === "-" || (c >= "0" && c <= "9")) {
+      let j = i + 1;
+      while (j < text.length && /[0-9.eE+-]/.test(text[j])) j++;
+      const token = text.slice(i, j);
+      if (
+        /^-?\d+$/.test(token) &&
+        String(Number(token)) !== token.replace(/^-0+(?=\d)/, "-")
+      )
+        return true;
+      i = j - 1;
+    }
+  }
+  return false;
+}
+
+/**
+ * The same moment in UTC, for a `timestamptz` value that carries another offset, such as
+ * `2026-11-11 09:42:07+07`. Null for a time already in UTC or one without an offset.
+ */
+export function utcOf(text: string): string | null {
+  const m =
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(\.\d+)?([+-])(\d{2})(?::?(\d{2}))?$/.exec(
+      text,
+    );
+  if (!m) return null;
+  const sign = m[8] === "-" ? -1 : 1;
+  const offset = sign * (Number(m[9]) * 60 + Number(m[10] ?? 0));
+  if (offset === 0) return null;
+  const at = Date.UTC(
+    Number(m[1]),
+    Number(m[2]) - 1,
+    Number(m[3]),
+    Number(m[4]),
+    Number(m[5]),
+    Number(m[6]),
+  );
+  const d = new Date(at - offset * 60_000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}${m[7] ?? ""} UTC`;
 }
 
 /** True for a JSON column, however the server spells the type (`JSON`, or PostgreSQL's `JSONB`). */

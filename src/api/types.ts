@@ -170,6 +170,8 @@ export interface IndexInfo {
   unique: boolean;
   columns: string[];
   indexType: string;
+  /** The statement that would create the index. PostgreSQL only; null for MySQL. */
+  definition: string | null;
 }
 
 export interface ForeignKeyInfo {

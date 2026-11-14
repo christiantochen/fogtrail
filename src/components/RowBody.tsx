@@ -2,7 +2,7 @@ import { Fragment, useMemo } from "react";
 import type { ResultColumn } from "../api/types";
 import { placeOf, type HitPlace, type RowHits } from "../lib/rowFind";
 import type { Range } from "../lib/find";
-import { jsonSummary, splitRow } from "../lib/sql";
+import { isTimeType, jsonSummary, splitRow, utcOf } from "../lib/sql";
 import { Marked } from "./Marked";
 import { JsonSection } from "./JsonSection";
 
@@ -190,14 +190,21 @@ export function RowBody({
           current={here("value", i) === 0}
         />
       );
+    // A time with an offset also says what it is in UTC.
+    const utc = isTimeType(columns[i].typeName)
+      ? utcOf(row[i] as string)
+      : null;
     return (
-      <span className="mono">
-        <Marked
-          text={row[i] as string}
-          ranges={f?.value ?? []}
-          current={here("value", i)}
-        />
-      </span>
+      <>
+        <span className="mono">
+          <Marked
+            text={row[i] as string}
+            ranges={f?.value ?? []}
+            current={here("value", i)}
+          />
+        </span>
+        {utc && <span className="rowfields__utc mono">= {utc}</span>}
+      </>
     );
   };
 

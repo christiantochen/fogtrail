@@ -408,12 +408,16 @@ export async function stubBackend(
                       unique: true,
                       columns: ["id"],
                       indexType: "btree",
+                      definition:
+                        "CREATE UNIQUE INDEX orders_pkey ON public.orders USING btree (id)",
                     },
                     {
                       name: "idx_orders_big",
                       unique: false,
                       columns: ["total"],
                       indexType: "btree · partial",
+                      definition:
+                        "CREATE INDEX idx_orders_big ON public.orders USING btree (total) WHERE (total > 1000)",
                     },
                   ],
                   foreignKeys: [
@@ -524,6 +528,7 @@ export async function stubBackend(
                     { name: "total", typeName: "NUMERIC" },
                     { name: "items", typeName: "JSONB" },
                     { name: "created_at", typeName: "TIMESTAMPTZ" },
+                    { name: "tags", typeName: "TEXT[]" },
                   ],
                   rows: [
                     [
@@ -532,6 +537,7 @@ export async function stubBackend(
                       "184.50",
                       '{"sku": "BK-114", "qty": 2}',
                       "2026-11-11 09:42:07.5+00",
+                      '{gift,"rush order"}',
                     ],
                     [
                       "48212",
@@ -539,6 +545,15 @@ export async function stubBackend(
                       "62.00",
                       null,
                       "2026-11-10 19:27:03+00",
+                      "{}",
+                    ],
+                    [
+                      "48211",
+                      "paid",
+                      "310.25",
+                      '{"id": 9007199254740993}',
+                      "2026-11-09 12:18:42+07",
+                      "{a}",
                     ],
                   ],
                   offset: 0,

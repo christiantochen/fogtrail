@@ -169,3 +169,147 @@ test.describe("the PostgreSQL connection form", () => {
     });
   });
 });
+
+test.describe("PostgreSQL values and indexes", () => {
+  async function openOrders(page: Page) {
+    await openShop(page);
+    await table(page, /^orders/).click();
+    await page.getByRole("table", { name: "Rows of orders" }).waitFor();
+  }
+  const grid = (page: Page) =>
+    page.getByRole("table", { name: "Rows of orders" });
+
+  test("a JSON chip opens that value, Esc goes back to the row, then closes", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    await grid(page)
+      .getByRole("button", { name: "Open items, 2 keys" })
+      .click();
+    const solo = page.getByRole("dialog", { name: "items" });
+    await expect(
+      solo.getByRole("button", { name: "Back to row" }),
+    ).toBeVisible();
+    await expect(solo.getByRole("tab", { name: "Formatted" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await expect(solo).toContainText('"sku"');
+    await page.keyboard.press("Escape");
+    await expect(
+      page.getByRole("dialog", { name: "Row details" }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+
+  test("clicking the chip does not also open the row on its own", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    await grid(page)
+      .getByRole("button", { name: "Open items, 2 keys" })
+      .click();
+    await expect(page.getByRole("dialog", { name: "Row details" })).toHaveCount(
+      0,
+    );
+  });
+
+  test("Raw shows the value as the server sent it, and the choice is kept", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    const chip = grid(page).getByRole("button", { name: "Open items, 2 keys" });
+    await chip.click();
+    const solo = page.getByRole("dialog", { name: "items" });
+    await solo.getByRole("tab", { name: "Raw" }).click();
+    await expect(solo.locator(".code--raw")).toHaveText(
+      '{"sku": "BK-114", "qty": 2}',
+    );
+    await expect(solo.getByRole("button", { name: "Copy raw" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    await chip.click();
+    await expect(
+      page
+        .getByRole("dialog", { name: "items" })
+        .getByRole("tab", { name: "Raw" }),
+    ).toHaveAttribute("aria-selected", "true");
+    // Formatted is one click away again.
+    await page.getByRole("tab", { name: "Formatted" }).click();
+    await expect(page.locator(".code--raw")).toHaveCount(0);
+  });
+
+  test("search works in the Raw view", async ({ page }) => {
+    await openOrders(page);
+    await grid(page)
+      .getByRole("button", { name: "Open items, 2 keys" })
+      .click();
+    const solo = page.getByRole("dialog", { name: "items" });
+    await solo.getByRole("tab", { name: "Raw" }).click();
+    await solo.getByLabel("Find in value").fill("BK-114");
+    await expect(solo.locator(".code--raw mark")).toHaveCount(1);
+  });
+
+  test("an array is a chip too, and opens as a list", async ({ page }) => {
+    await openOrders(page);
+    await grid(page)
+      .getByRole("button", { name: "Open tags, 2 items" })
+      .click();
+    const solo = page.getByRole("dialog", { name: "tags" });
+    await expect(solo).toContainText("rush order");
+    await expect(solo.locator(".badge", { hasText: "array" })).toBeVisible();
+    await solo.getByRole("tab", { name: "Raw" }).click();
+    await expect(solo.locator(".code--raw")).toHaveText('{gift,"rush order"}');
+  });
+
+  test("a number JSON can't hold exactly gets a notice, gone in Raw", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    await grid(page).getByRole("button", { name: "Open items, 1 key" }).click();
+    const solo = page.getByRole("dialog", { name: "items" });
+    await expect(solo.getByRole("status")).toContainText(
+      "too big to show exactly",
+    );
+    await solo.getByRole("tab", { name: "Raw" }).click();
+    await expect(solo.getByRole("status")).toHaveCount(0);
+    await expect(solo.locator(".code--raw")).toContainText("9007199254740993");
+  });
+
+  test("a time with an offset also shows UTC in the row dialog", async ({
+    page,
+  }) => {
+    const expand = () =>
+      page.getByRole("button", { name: "Expand row in a dialog" });
+    const dialog = () => page.getByRole("dialog", { name: "Row details" });
+    await openOrders(page);
+    await grid(page).locator("tbody tr").nth(2).locator("td").first().click();
+    await expand().click();
+    await expect(dialog()).toContainText("= 2026-11-09 05:18:42 UTC");
+    // A time already in UTC says nothing extra.
+    await page.keyboard.press("Escape");
+    await grid(page).locator("tbody tr").nth(0).locator("td").first().click();
+    await expand().click();
+    await expect(dialog()).toContainText("09:42:07.5+00");
+    await expect(dialog()).not.toContainText("= 2026");
+  });
+
+  test("Indexes is its own tab, and a click shows how an index is made", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    await page.getByRole("tab", { name: "Indexes" }).click();
+    const list = page.getByRole("table", { name: "Indexes" });
+    await expect(
+      list.getByRole("row", { name: /idx_orders_big/ }),
+    ).toContainText("btree · partial");
+    await expect(page.locator(".code--tip")).toHaveCount(0);
+    await list.getByRole("button", { name: "idx_orders_big" }).click();
+    await expect(page.locator(".code--tip")).toContainText(
+      "CREATE INDEX idx_orders_big ON public.orders USING btree (total) WHERE (total > 1000)",
+    );
+    await list.getByRole("button", { name: "idx_orders_big" }).click();
+    await expect(page.locator(".code--tip")).toHaveCount(0);
+  });
+});

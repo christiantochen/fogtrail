@@ -2352,6 +2352,49 @@ tr.row--fresh td {
   color: var(--chip-ink);
   font-size: 12px;
 }
+button.jchip--open {
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+button.jchip--open:hover {
+  filter: brightness(0.95);
+}
+button.jchip--open:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+.linkbtn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.linkbtn:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+.rowfields__utc {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.rowdialog__notice {
+  margin: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--chip);
+  color: var(--chip-ink);
+  font-size: 12.5px;
+}
+.code--raw {
+  word-break: break-all;
+}
 .rowpanel {
   flex: none;
   width: 380px;
