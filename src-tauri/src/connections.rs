@@ -5,6 +5,7 @@ use std::sync::{Arc, RwLock};
 use serde::Serialize;
 
 use crate::drivers::mysql::{self, MySqlDriver};
+use crate::drivers::postgres::{self, PostgresDriver};
 use crate::drivers::redis::RedisDriver;
 use crate::drivers::{ConnectionInfo, KeyValueDriver, Probe, ServerInfo, SqlDriver, Store};
 use crate::error::AppError;
@@ -145,7 +146,7 @@ impl Connections {
         }
     }
 
-    /// The active connection as a SQL database (MySQL).
+    /// The active connection as a SQL database (MySQL, PostgreSQL).
     pub fn sql(&self) -> Result<Arc<dyn SqlDriver>, AppError> {
         match self.store()? {
             Store::Sql(d) => Ok(d),
@@ -203,6 +204,9 @@ fn build_store(profile: &Profile, password: Option<&str>) -> Result<Store, AppEr
         "mysql" => Ok(Store::Sql(Arc::new(MySqlDriver::new(mysql::options(
             profile, password,
         ))))),
+        "postgres" => Ok(Store::Sql(Arc::new(PostgresDriver::new(
+            postgres::options(profile, password),
+        )))),
         other => Err(AppError::InvalidArgument(format!(
             "Unknown connection type: {other}"
         ))),
@@ -259,6 +263,8 @@ mod tests {
             schema: None,
             database: 0,
             tls: false,
+            dbname: None,
+            ssl_mode: None,
         }
     }
 
