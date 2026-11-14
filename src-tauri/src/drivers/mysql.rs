@@ -417,7 +417,7 @@ impl SqlDriver for MySqlDriver {
         run_id: &str,
     ) -> Result<QueryResult, AppError> {
         // Nothing reaches the server until the guard has said yes.
-        sql_guard::check(sql)?;
+        sql_guard::check(sql, sql_guard::Dialect::MySql)?;
         let pool = self.pool().await?;
         let mut conn = pool.acquire().await.map_err(|e| self.err(e))?;
         // Unqualified table names mean the schema open in the UI. A pooled connection
@@ -790,6 +790,7 @@ fn group_indexes(rows: Vec<(String, bool, String, String)>) -> Vec<IndexInfo> {
         match out.last_mut() {
             Some(last) if last.name == name => last.columns.push(column),
             _ => out.push(IndexInfo {
+                definition: None,
                 name,
                 unique,
                 columns: vec![column],
@@ -964,6 +965,8 @@ mod tests {
             database: 0,
             schema: Some("shop".into()),
             tls: false,
+            dbname: None,
+            ssl_mode: None,
         };
         let o = options(&p, Some("pw"));
         assert_eq!(o.get_host(), "db.internal");

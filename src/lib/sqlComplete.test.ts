@@ -212,3 +212,42 @@ describe("suggest", () => {
     expect(at("SELECT | FROM orders", true).length).toBeLessThanOrEqual(8);
   });
 });
+
+describe("PostgreSQL completion", () => {
+  const pg: Known = { ...known, dialect: "postgres" };
+  const pgAt = (sql: string, manual = false) => {
+    const caret = sql.indexOf("|");
+    const text = sql.replace("|", "");
+    return suggest(contextAt(text, caret, "postgres"), pg, manual);
+  };
+
+  it("quotes with double quotes, and for capitals and reserved words", () => {
+    expect(quoteName("orders", "postgres")).toBe("orders");
+    expect(quoteName("Orders", "postgres")).toBe('"Orders"');
+    expect(quoteName("Weird Name", "postgres")).toBe('"Weird Name"');
+    expect(quoteName("user", "postgres")).toBe('"user"');
+    expect(quoteName('a"b', "postgres")).toBe('"a""b"');
+    expect(quoteName("a`b")).toBe("`a``b`");
+  });
+  it("inserts a quoted table name", () => {
+    const items = pgAt("SELECT * FROM wei|");
+    expect(items.find((i) => i.label === "weird name")?.insert).toBe(
+      '"weird name"',
+    );
+  });
+  it("offers PostgreSQL's statement starters, not DESCRIBE", () => {
+    const labels = pgAt("", true).map((i) => i.label);
+    expect(labels).toContain("VALUES");
+    expect(labels).not.toContain("DESCRIBE");
+  });
+  it("finds tables written with double quotes", () => {
+    const sql = 'SELECT * FROM "shop"."orders" o';
+    const refs = findRefs(sql, tokenize(sql, "postgres"));
+    expect(refs).toEqual([{ schema: "shop", table: "orders", alias: "o" }]);
+  });
+  it("suggests nothing inside a quoted name", () => {
+    expect(
+      contextAt('SELECT "ab|c"'.replace("|", ""), 10, "postgres").blocked,
+    ).toBe(true);
+  });
+});

@@ -6,7 +6,9 @@ import {
 } from "@tanstack/react-query";
 import { useMemo } from "react";
 import type { Known, TableRef } from "../lib/sqlComplete";
+import { sqlDialectOf } from "../lib/sql";
 import { globFor } from "../lib/tree";
+import { useUi } from "../state/ui";
 import {
   getKey,
   listProfiles,
@@ -161,6 +163,7 @@ export function useCompletionKnown(
   refs: TableRef[],
   qualifier: string | null,
 ): Known {
+  const dialect = sqlDialectOf(useUi((s) => s.connected?.driver));
   const tables = useTables(schema);
   const schemas = useSchemas();
   const names = useMemo(
@@ -221,6 +224,7 @@ export function useCompletionKnown(
       view: t.kind === "view",
     });
     return {
+      dialect,
       tables: (tables.data ?? []).map(view),
       schemas: names,
       columns: (table, inSchema) =>
@@ -232,5 +236,14 @@ export function useCompletionKnown(
             ? otherTables.data?.map(view)
             : undefined,
     };
-  }, [tables.data, otherTables.data, names, schema, other, structures, wanted]);
+  }, [
+    dialect,
+    tables.data,
+    otherTables.data,
+    names,
+    schema,
+    other,
+    structures,
+    wanted,
+  ]);
 }

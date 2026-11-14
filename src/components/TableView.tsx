@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { useRows, useStructure } from "../api/queries";
 import type {
   ColumnInfo,
@@ -12,7 +12,9 @@ import { refreshAll } from "../lib/refreshAll";
 import {
   ROWS_PER_PAGE,
   columnSub,
+  isArrayType,
   isJsonType,
+  jsonOf,
   isNumericType,
   isTimeType,
   jsonSummary,
@@ -20,11 +22,12 @@ import {
   rangeLabel,
   resultToTsv,
   splitTimestamp,
+  sqlDialectOf,
   MAX_PINS,
   livePins,
   pinOrder,
 } from "../lib/sql";
-import { useUi } from "../state/ui";
+import { useUi, type SqlTab } from "../state/ui";
 import { FilterBar } from "./FilterBar";
 import { PinButton } from "./PinButton";
 import { useColumnPins } from "./useColumnPins";
@@ -40,7 +43,8 @@ export function TableView({
   schema: string;
   table: string;
 }) {
-  const tab = useUi((s) => s.sqlTab);
+  const shownTab = useUi((s) => s.sqlTab);
+  const connected = useUi((s) => s.connected);
   const setTab = useUi((s) => s.setSqlTab);
   const structure = useStructure(schema, table);
 
@@ -64,6 +68,12 @@ export function TableView({
   }
 
   const s = structure.data;
+  // Indexes get a tab of their own where the server can say how each was made.
+  const postgres = sqlDialectOf(connected?.driver) === "postgres";
+  const tabs: SqlTab[] = postgres
+    ? ["data", "structure", "indexes"]
+    : ["data", "structure"];
+  const tab = tabs.includes(shownTab) ? shownTab : "data";
   return (
     <div className="sqltable">
       {/* The breadcrumb already shows the name; this keeps it for screen readers. */}
@@ -72,7 +82,7 @@ export function TableView({
       <div className="panel sqlpanel">
         <div className="panel__bar">
           <div className="tabs" role="tablist" aria-label="Table views">
-            {(["data", "structure"] as const).map((t) => (
+            {tabs.map((t) => (
               <button
                 key={t}
                 type="button"
@@ -81,7 +91,7 @@ export function TableView({
                 aria-selected={tab === t}
                 onClick={() => setTab(t)}
               >
-                {t === "data" ? "Data" : "Structure"}
+                {TAB_LABEL[t]}
               </button>
             ))}
           </div>
@@ -91,6 +101,8 @@ export function TableView({
         </div>
         {tab === "data" ? (
           <Data schema={schema} table={table} columns={s?.columns} />
+        ) : s && tab === "indexes" ? (
+          <Indexes s={s} />
         ) : s ? (
           <Structure s={s} />
         ) : (
@@ -184,6 +196,7 @@ function Data({
       {/* A new page, filter or sort starts with no row open. */}
       <DataGrid
         key={`${offset}|${filter}|${sort?.column}|${sort?.desc}`}
+        schema={schema}
         table={table}
         page={page}
         info={new Map(columns?.map((c) => [c.name, c]))}
@@ -201,6 +214,7 @@ function Data({
 }
 
 function DataGrid({
+  schema,
   table,
   page,
   info,
@@ -213,6 +227,7 @@ function DataGrid({
   loading,
   onOffset,
 }: {
+  schema: string;
   table: string;
   page: RowPage;
   info: Map<string, ColumnInfo>;
@@ -373,6 +388,12 @@ function DataGrid({
                       value={row[i]}
                       type={page.columns[i].typeName}
                       pin={pinOf(page.columns[i].name)}
+                      name={page.columns[i].name}
+                      onOpenJson={() => {
+                        if (stale) return;
+                        setOpen(r);
+                        setDialog({ json: i });
+                      }}
                     />
                   ))}
                   <td className="sqlgrid__fill" aria-hidden="true" />
@@ -453,7 +474,9 @@ function DataGrid({
       )}
       {dialog && open !== null && page.rows[open] && (
         <RowDialog
+          schema={schema}
           table={table}
+          info={info}
           columns={page.columns}
           row={page.rows[open]}
           position={open}
@@ -473,10 +496,16 @@ function Cell({
   value,
   type,
   pin,
+  name,
+  onOpenJson,
 }: {
   value: string | null;
   type: string;
   pin?: { left: number; last: boolean };
+  /** The column's name, for the JSON chip's label. */
+  name: string;
+  /** Open the row dialog on this value. */
+  onOpenJson: () => void;
 }) {
   const stick = pin
     ? {
@@ -493,14 +522,25 @@ function Cell({
       </td>
     );
   const numeric = isNumericType(type);
-  if (isJsonType(type)) {
-    const summary = jsonSummary(value);
-    if (summary)
+  if (isJsonType(type) || isArrayType(type)) {
+    const field = jsonOf(type, value);
+    const summary = field ? jsonSummary(field.pretty) : null;
+    if (field && summary)
       return (
         <td className={cls()} style={stick?.style} title={value}>
-          <span className="jchip mono">
-            {"{ }"} {summary}
-          </span>
+          <button
+            type="button"
+            className="jchip jchip--open mono"
+            aria-label={`Open ${name}, ${summary}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenJson();
+            }}
+            // Enter and Space on the chip open the value, not the row around it.
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            {field.pretty.startsWith("[") ? "[ ]" : "{ }"} {summary}
+          </button>
         </td>
       );
   }
@@ -524,12 +564,78 @@ function Cell({
   );
 }
 
+const TAB_LABEL: Record<SqlTab, string> = {
+  data: "Data",
+  structure: "Structure",
+  indexes: "Indexes",
+};
+
+const KIND_LABEL: Record<string, string> = {
+  view: "View",
+  matview: "Materialized view",
+  foreign: "Foreign table",
+  table: "Table",
+};
+
+/** PostgreSQL's indexes with the statement behind each, opened one at a time. */
+function Indexes({ s }: { s: TableStructure }) {
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <div className="sqlpanel__scroll">
+      {s.indexes.length === 0 ? (
+        <p className="note">No indexes.</p>
+      ) : (
+        <table className="sqlgrid sqlgrid--plain" aria-label="Indexes">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Columns</th>
+              <th>Unique</th>
+              <th>Method</th>
+            </tr>
+          </thead>
+          <tbody>
+            {s.indexes.map((i) => (
+              <Fragment key={i.name}>
+                <tr>
+                  <td>
+                    <button
+                      type="button"
+                      className="linkbtn mono"
+                      aria-expanded={open === i.name}
+                      onClick={() => setOpen(open === i.name ? null : i.name)}
+                    >
+                      {i.name}
+                    </button>
+                  </td>
+                  <td className="mono">{i.columns.join(", ")}</td>
+                  <td>{i.unique ? "YES" : "NO"}</td>
+                  <td>{i.indexType}</td>
+                </tr>
+                {open === i.name && (
+                  <tr>
+                    <td colSpan={4}>
+                      <pre className="code code--tip">
+                        {i.definition ?? "No definition available."}
+                      </pre>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function Structure({ s }: { s: TableStructure }) {
   return (
     <div className="sqlpanel__scroll">
       <dl className="sqlfacts">
         <dt>Kind</dt>
-        <dd>{s.kind === "view" ? "View" : "Table"}</dd>
+        <dd>{KIND_LABEL[s.kind] ?? "Table"}</dd>
         {s.engine && (
           <>
             <dt>Engine</dt>

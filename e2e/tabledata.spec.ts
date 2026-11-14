@@ -32,7 +32,7 @@ test.describe("the table's data view", () => {
     await openOrders(page);
     const grid = page.getByRole("table", { name: "Rows of orders" });
     const first = grid.locator("tbody tr").nth(0);
-    await expect(first.locator(".jchip")).toHaveText("{ } 2 items");
+    await expect(first.locator(".jchip")).toHaveText("[ ] 2 items");
     await expect(grid.locator("tbody tr").nth(1).locator(".jchip")).toHaveText(
       "{ } 1 key",
     );
@@ -567,7 +567,7 @@ test.describe("the row dialog", () => {
       return bad;
     });
 
-  test("a wide row with no JSON flows into several columns, wraps names after underscores and values in their cell", async ({
+  test("a row with 24 columns is one list, names stay on a line, a long value is cut to one line until clicked", async ({
     page,
   }) => {
     await openOrders(page);
@@ -584,22 +584,36 @@ test.describe("the row dialog", () => {
       .getByRole("button", { name: "Expand row in a dialog" })
       .click();
     const d = dialog(page);
-    await expect(d).toContainText("Columns");
-    await expect(d.locator(".rowdialog__count")).toHaveText("24");
-    // At this width the columns sit side by side: more than one left edge.
+    await expect(d.locator(".rowdialog__count")).toHaveText(
+      "Showing 24 of 24 columns",
+    );
+    // One column of rows: every row starts at the same left edge. No groups rail at 24.
     const lefts = await d
       .locator(".rowfields__item")
       .evaluateAll((els) => [
         ...new Set(els.map((e) => Math.round(e.getBoundingClientRect().left))),
       ]);
-    expect(lefts.length).toBeGreaterThanOrEqual(2);
+    expect(lefts).toHaveLength(1);
+    await expect(
+      d.getByRole("navigation", { name: "Column groups" }),
+    ).toHaveCount(0);
     expect(await midWordBreaks(page)).toEqual([]);
-    // The long location stays inside its own cell.
-    const fits = await d
-      .locator(".rowfields__item", { hasText: "Opposite Sample Park" })
+    // The long location stays on one line inside its own cell, and a click opens it in full.
+    const row = d.locator(".rowfields__item", {
+      hasText: "Opposite Sample Park",
+    });
+    const text = row.locator(".rowfields__text");
+    const oneLine = await row
       .locator("dd")
+      .first()
       .evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
-    expect(fits).toBe(true);
+    expect(oneLine).toBe(true);
+    const short = (await text.boundingBox())!.height;
+    await text.click();
+    await expect(text).toHaveAttribute("aria-expanded", "true");
+    expect((await text.boundingBox())!.height).toBeGreaterThan(short);
+    await text.click();
+    await expect(text).toHaveAttribute("aria-expanded", "false");
   });
 
   test("with JSON the columns are one full-width list in table order, and names still break cleanly", async ({
@@ -610,8 +624,10 @@ test.describe("the row dialog", () => {
       .getByRole("button", { name: "Expand row in a dialog" })
       .click();
     const d = dialog(page);
-    await expect(d.locator(".rowdialog__count")).toHaveText("8");
-    const names = await d.locator(".rowfields dt").allTextContents();
+    await expect(d.locator(".rowdialog__count")).toHaveText(
+      "Showing 8 of 8 columns",
+    );
+    const names = await d.locator(".rowfields__id").allTextContents();
     expect(names.map((n) => n.replace(/\u200b/g, ""))).toEqual([
       "id",
       "customer_id",
@@ -624,6 +640,10 @@ test.describe("the row dialog", () => {
     ]);
     const box = await d.locator(".rowdialog__fieldsbody").boundingBox();
     expect(box!.width).toBeGreaterThan(900);
+    // Each row names its type, and the primary key says so.
+    await expect(
+      d.locator(".rowfields__item", { hasText: /^id/ }).locator(".badge"),
+    ).toContainText("PK");
     expect(await midWordBreaks(page)).toEqual([]);
   });
 
@@ -642,7 +662,7 @@ test.describe("the row dialog", () => {
     await hide.check();
     await expect(d.locator(".nullchip")).toHaveCount(0);
     await expect(d.locator(".rowdialog__count")).toHaveText(
-      "7 of 8 shown · 1 null hidden",
+      "Showing 7 of 8 columns · 1 NULL hidden",
     );
     await expect(d.locator(".rowfields dt", { hasText: "notes" })).toHaveCount(
       0,
@@ -743,7 +763,9 @@ test.describe("the row dialog", () => {
     const find = d.getByRole("searchbox", { name: "Find in row" });
     await find.fill("cust");
     await expect(d.getByRole("status")).toHaveText("1 of 1");
-    await expect(d.locator(".rowdialog__count")).toHaveText("1 of 8 match");
+    await expect(d.locator(".rowdialog__count")).toHaveText(
+      "1 of 8 columns match",
+    );
     await expect(d.locator(".rowfields__item")).toHaveCount(1);
     await expect(d.locator(".rowfields mark")).toHaveText("cust");
     // A value matches too, not only a name.

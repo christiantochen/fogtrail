@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import { CloseIcon, Refresh } from "./Icons";
 import { tokenClass, tokenize, HIGHLIGHT_LIMIT } from "../lib/sqlHighlight";
+import { sqlDialectOf, type SqlDialect } from "../lib/sql";
+import { useUi } from "../state/ui";
 
 /**
  * The WHERE filter above a table's rows: one line of SQL, coloured as it is typed.
@@ -22,6 +24,7 @@ export function FilterBar({
   const [draft, setDraft] = useState(applied);
   const colors = useRef<HTMLPreElement>(null);
   const changed = draft.trim() !== applied.trim();
+  const dialect = sqlDialectOf(useUi((s) => s.connected?.driver));
 
   const apply = (text: string) => onApply(text.trim());
   const clear = () => {
@@ -54,7 +57,7 @@ export function FilterBar({
               {draft.length > HIGHLIGHT_LIMIT ? (
                 draft
               ) : (
-                <Colored text={draft} />
+                <Colored text={draft} dialect={dialect} />
               )}
               {"\n"}
             </pre>
@@ -106,10 +109,10 @@ export function FilterBar({
   );
 }
 
-function Colored({ text }: { text: string }) {
+function Colored({ text, dialect }: { text: string; dialect: SqlDialect }) {
   return (
     <>
-      {tokenize(text).map((t, i) => {
+      {tokenize(text, dialect).map((t, i) => {
         const cls = tokenClass(text, t);
         const piece = text.slice(t.start, t.end);
         return cls ? (

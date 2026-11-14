@@ -27,6 +27,12 @@ import {
   TEXT_JSON_LIMIT,
   toggleColumnPin,
   visibleSchemas,
+  sqlDialectOf,
+  arrayJson,
+  hasInexactNumber,
+  isArrayType,
+  parsePgArray,
+  utcOf,
 } from "./sql";
 
 const table = (name: string, rows: number | null = 1): TableInfo => ({
@@ -298,6 +304,7 @@ describe("JSON in text columns", () => {
   it("always shows a JSON column as JSON", () => {
     expect(jsonOf("JSON", '{"a":1}')).toEqual({
       pretty: '{\n  "a": 1\n}',
+      raw: '{"a":1}',
       source: "json",
     });
     expect(jsonOf("JSON", "not json")).toBeNull();
@@ -346,5 +353,117 @@ describe("rowTitle", () => {
     ).toBe("orders · id 7");
     expect(rowTitle("orders", [{ name: "x" }], ["a"])).toBe("orders");
     expect(rowTitle("orders", [{ name: "id" }], [null])).toBe("orders");
+  });
+});
+
+describe("PostgreSQL types", () => {
+  it("treats JSONB as JSON", () => {
+    expect(isJsonType("JSONB")).toBe(true);
+    expect(isJsonType("jsonb")).toBe(true);
+    expect(isJsonType("TEXT")).toBe(false);
+  });
+  it("right-aligns PostgreSQL's number types", () => {
+    for (const t of ["INT2", "INT4", "INT8", "FLOAT8", "NUMERIC", "MONEY"])
+      expect(isNumericType(t)).toBe(true);
+    expect(isNumericType("TEXT")).toBe(false);
+  });
+  it("knows TIMESTAMPTZ is a time", () => {
+    expect(isTimeType("TIMESTAMPTZ")).toBe(true);
+  });
+  it("splits a timestamp that ends with an offset", () => {
+    expect(splitTimestamp("2026-11-11 08:51:20.5+00")).toEqual([
+      "2026-11-11",
+      "08:51:20.5+00",
+    ]);
+    expect(splitTimestamp("2026-11-11 08:51:20+05:30")).toEqual([
+      "2026-11-11",
+      "08:51:20+05:30",
+    ]);
+    expect(splitTimestamp("2026-11-11 08:51:20")).not.toBeNull();
+    expect(splitTimestamp("2026-11-11 08:51:20+")).toBeNull();
+  });
+  it("picks the dialect from the driver name", () => {
+    expect(sqlDialectOf("PostgreSQL")).toBe("postgres");
+    expect(sqlDialectOf("MySQL 8.0")).toBe("mysql");
+    expect(sqlDialectOf("MariaDB")).toBe("mysql");
+    expect(sqlDialectOf(undefined)).toBe("mysql");
+  });
+});
+
+describe("PostgreSQL arrays", () => {
+  it("reads plain, quoted and null elements", () => {
+    expect(parsePgArray('{a,"b c",NULL,"NULL"}')).toEqual([
+      "a",
+      "b c",
+      null,
+      "NULL",
+    ]);
+  });
+  it("reads escapes, nesting and an empty array", () => {
+    expect(parsePgArray('{"say \\"hi\\"","a,b"}')).toEqual(['say "hi"', "a,b"]);
+    expect(parsePgArray("{{1,2},{3,4}}")).toEqual([
+      ["1", "2"],
+      ["3", "4"],
+    ]);
+    expect(parsePgArray("{}")).toEqual([]);
+    expect(parsePgArray("[0:1]={x,y}")).toEqual(["x", "y"]);
+  });
+  it("refuses text that is not a whole array", () => {
+    for (const bad of ["abc", "{a,b", "{a,,b}", '{"open}', "{a}x", ""])
+      expect(parsePgArray(bad), bad).toBeNull();
+  });
+  it("turns an array into JSON, with numbers and booleans as such", () => {
+    expect(arrayJson("TEXT[]", "{a,NULL}")).toBe('[\n  "a",\n  null\n]');
+    expect(JSON.parse(arrayJson("INT4[]", "{1,2,-3}")!)).toEqual([1, 2, -3]);
+    expect(JSON.parse(arrayJson("BOOL[]", "{t,f}")!)).toEqual([true, false]);
+    // A number JSON can't hold exactly stays text.
+    expect(JSON.parse(arrayJson("INT8[]", "{9007199254740993}")!)).toEqual([
+      "9007199254740993",
+    ]);
+    expect(arrayJson("TEXT[]", "not an array")).toBeNull();
+  });
+  it("sees an array type by its name", () => {
+    expect(isArrayType("TEXT[]")).toBe(true);
+    expect(isArrayType("TEXT")).toBe(false);
+  });
+  it("shows an array as a JSON field with its raw text", () => {
+    const f = jsonOf("TEXT[]", "{a,b,c}");
+    expect(f?.source).toBe("array");
+    expect(f?.raw).toBe("{a,b,c}");
+    expect(jsonSummary(f!.pretty)).toBe("3 items");
+  });
+  it("keeps the raw JSON beside the formatted one", () => {
+    const f = jsonOf("JSONB", '{"b": 1, "a": 2}');
+    expect(f?.raw).toBe('{"b": 1, "a": 2}');
+    expect(f?.source).toBe("json");
+  });
+});
+
+describe("hasInexactNumber", () => {
+  it("spots a number JSON.parse would change", () => {
+    expect(hasInexactNumber('{"id": 9007199254740993}')).toBe(true);
+    expect(hasInexactNumber("[12345678901234567890]")).toBe(true);
+  });
+  it("leaves ordinary numbers and digits inside strings alone", () => {
+    expect(hasInexactNumber('{"id": 42, "n": -1.5, "e": 1e9}')).toBe(false);
+    expect(hasInexactNumber('{"id": "9007199254740993"}')).toBe(false);
+    expect(hasInexactNumber('{"a": "x\\"9007199254740993"}')).toBe(false);
+  });
+});
+
+describe("utcOf", () => {
+  it("converts a time with an offset", () => {
+    expect(utcOf("2026-11-11 09:42:07+07")).toBe("2026-11-11 02:42:07 UTC");
+    expect(utcOf("2026-11-11 01:00:00.5-05:30")).toBe(
+      "2026-11-11 06:30:00.5 UTC",
+    );
+  });
+  it("crosses midnight", () => {
+    expect(utcOf("2026-01-01 02:00:00+05")).toBe("2025-12-31 21:00:00 UTC");
+  });
+  it("says nothing for UTC or a time with no offset", () => {
+    expect(utcOf("2026-11-11 09:42:07+00")).toBeNull();
+    expect(utcOf("2026-11-11 09:42:07")).toBeNull();
+    expect(utcOf("nope")).toBeNull();
   });
 });

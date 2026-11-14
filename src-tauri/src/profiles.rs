@@ -29,6 +29,12 @@ pub struct Profile {
     pub schema: Option<String>,
     #[serde(default)]
     pub tls: bool,
+    /// PostgreSQL database name. A Postgres connection opens exactly one database.
+    #[serde(default)]
+    pub dbname: Option<String>,
+    /// PostgreSQL SSL mode: `disable`, `require` or `verify-full`. Unset means `require`.
+    #[serde(default)]
+    pub ssl_mode: Option<String>,
 }
 
 fn default_driver() -> String {
@@ -49,7 +55,19 @@ impl Profile {
         }
         match self.driver.as_str() {
             "redis" | "mysql" => Ok(()),
-            _ => bad("Only Redis-compatible servers and MySQL are supported for now."),
+            "postgres" => {
+                if self.username.as_deref().is_none_or(|u| u.trim().is_empty()) {
+                    return bad("Enter a user.");
+                }
+                if self.dbname.as_deref().is_none_or(|d| d.trim().is_empty()) {
+                    return bad("Enter a database.");
+                }
+                match self.ssl_mode.as_deref() {
+                    None | Some("disable" | "require" | "verify-full") => Ok(()),
+                    Some(_) => bad("SSL mode must be disable, require or verify-full."),
+                }
+            }
+            _ => bad("Only Redis-compatible servers, MySQL and PostgreSQL are supported for now."),
         }
     }
 
@@ -156,6 +174,8 @@ mod tests {
             database: 0,
             schema: None,
             tls: false,
+            dbname: None,
+            ssl_mode: None,
         }
     }
 

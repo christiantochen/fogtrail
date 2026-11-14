@@ -8,6 +8,7 @@ import {
   approxRows,
   filterTables,
   pickSchema,
+  sqlDialectOf,
   visibleSchemas,
 } from "../lib/sql";
 import { useUi } from "../state/ui";
@@ -42,8 +43,12 @@ export function SqlSidebar() {
   const input = useRef<HTMLInputElement>(null);
 
   // Open the profile's own database first, once the list is known.
+  // A PostgreSQL connection opens `public` unless it has been renamed or removed.
+  const postgres = sqlDialectOf(conn?.driver) === "postgres";
+  const noun = postgres ? "schema" : "database";
   const preferred =
-    profiles.data?.find((p) => p.id === connectedId)?.schema ?? null;
+    profiles.data?.find((p) => p.id === connectedId)?.schema ??
+    (postgres ? "public" : null);
   useEffect(() => {
     if (schema === null && schemas.isSuccess && profiles.isSuccess) {
       selectSchema(pickSchema(schemas.data, preferred));
@@ -129,11 +134,13 @@ export function SqlSidebar() {
       </div>
 
       <div className="sqlpick">
-        <span className="section-label">Database</span>
+        <span className="section-label">
+          {postgres ? "Schema" : "Database"}
+        </span>
         <div className="schemapick">
           <DatabaseIcon />
           <Dropdown
-            label="Database"
+            label={postgres ? "Schema" : "Database"}
             value={schema ?? ""}
             disabled={!schemas.isSuccess}
             onChange={(name) => {
@@ -162,7 +169,7 @@ export function SqlSidebar() {
             className="more more--tight"
             onClick={() => setShowSystem(true)}
           >
-            Show system databases
+            Show system {noun}s
           </button>
         )}
       </div>
@@ -234,7 +241,7 @@ export function SqlSidebar() {
         <div className="note">
           {filter.trim() !== ""
             ? "No table matches."
-            : "This database has no tables."}
+            : `This ${noun} has no tables.`}
         </div>
       )}
       {tables.isSuccess && list.length > 0 && (
@@ -250,7 +257,7 @@ export function SqlSidebar() {
               >
                 <TableIcon className="row__chev" />
                 <span className="row__label">{t.name}</span>
-                {t.kind === "view" && <span className="badge">view</span>}
+                {t.kind !== "table" && <span className="badge">{t.kind}</span>}
                 <span
                   className="row__count"
                   title={
@@ -269,7 +276,7 @@ export function SqlSidebar() {
 
       <div className="sidebar__foot">
         <Lock />
-        <span>Read-only session. Fogtrail blocks writes.</span>
+        <span>Read-only transaction. Writes blocked.</span>
       </div>
     </aside>
   );

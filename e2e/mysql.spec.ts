@@ -38,7 +38,7 @@ test.describe("browsing MySQL", () => {
       page.getByRole("heading", { name: "Pick a table to read it" }),
     ).toBeVisible();
     await expect(
-      page.getByText("Read-only session. Fogtrail blocks writes."),
+      page.getByText("Read-only transaction. Writes blocked."),
     ).toBeVisible();
   });
 
@@ -66,6 +66,13 @@ test.describe("browsing MySQL", () => {
     await expect(page.getByText("Rows 1–3")).toBeVisible();
     await expect(page.getByRole("button", { name: "Next 100" })).toBeDisabled();
     await expect(page.getByRole("button", { name: "Previous" })).toBeDisabled();
+  });
+
+  test("MySQL has no separate Indexes tab", async ({ page }) => {
+    await openShop(page);
+    await table(page, /^orders/).click();
+    await expect(page.getByRole("tab", { name: "Structure" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Indexes" })).toHaveCount(0);
   });
 
   test("Structure lists columns, indexes and foreign keys", async ({

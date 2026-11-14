@@ -41,14 +41,33 @@ export const mysqlProfile = {
   tls: false,
 };
 
+// A PostgreSQL connection, added only by tests that ask for it.
+export const postgresProfile = {
+  id: "4",
+  name: "shop-pg",
+  driver: "postgres",
+  host: "pg.internal",
+  port: 5432,
+  username: "fogtrail",
+  database: 0,
+  schema: null,
+  tls: true,
+  dbname: "shop",
+  sslMode: "require",
+};
+
 export async function stubBackend(
   page: Page,
   extraKeys: string[] = [],
-  options: { mysql?: boolean; extraSchemas?: number } = {},
+  options: { mysql?: boolean; postgres?: boolean; extraSchemas?: number } = {},
 ) {
   await page.addInitScript(
-    ([base, extra, mysql, extraSchemas]) => {
-      const profiles = mysql ? [...base, mysql] : [...base];
+    ([base, extra, mysql, postgres, extraSchemas]) => {
+      const profiles = [
+        ...base,
+        ...(mysql ? [mysql] : []),
+        ...(postgres ? [postgres] : []),
+      ];
       const keys = [
         ...extra,
         "cache:user:1",
@@ -72,6 +91,68 @@ export async function stubBackend(
           return w.__cbs.length - 1;
         },
         invoke: async (cmd: string, args: { id?: string; name?: string }) => {
+          // `ledger`: 126 columns in groups, to try the row dialog on a wide table.
+          const ledger = () => {
+            const spec: [string, number, number][] = [
+              ["", 9, 8],
+              ["billing_", 22, 9],
+              ["shipping_", 24, 11],
+              ["audit_", 9, 7],
+              ["flags_", 31, 9],
+              ["x", 31, 8],
+            ];
+            const cols: {
+              name: string;
+              typeName: string;
+              value: string | null;
+            }[] = [];
+            for (const [prefix, count, set] of spec) {
+              for (let i = 0; i < count; i++) {
+                const name =
+                  prefix === ""
+                    ? [
+                        "id",
+                        "status",
+                        "total",
+                        "channel",
+                        "placed",
+                        "meta",
+                        "tags",
+                        "note",
+                        "ref",
+                      ][i]
+                    : prefix === "x"
+                      ? `x${String(i).padStart(2, "0")}_value`
+                      : `${prefix}${["name", "email", "city", "amount", "address", "due", "code", "memo", "flag"][i % 9]}${i >= 9 ? i : ""}`;
+                const typeName =
+                  name === "meta" || name.endsWith("address")
+                    ? "JSON"
+                    : name === "tags"
+                      ? "TEXT[]"
+                      : name === "id" || name.endsWith("amount")
+                        ? "BIGINT"
+                        : name === "placed" || name.endsWith("due")
+                          ? "DATETIME"
+                          : "VARCHAR";
+                const value =
+                  i >= set
+                    ? null
+                    : typeName === "JSON"
+                      ? '{"a": 1, "b": 2, "c": 3}'
+                      : typeName === "TEXT[]"
+                        ? "{wholesale,gift}"
+                        : typeName === "BIGINT"
+                          ? String(7730 + i)
+                          : typeName === "DATETIME"
+                            ? "2026-11-14 10:58:13"
+                            : name === "note"
+                              ? "Deliver to the back door of the bakery, ring twice and ask for the manager on duty"
+                              : `${name} ${i}`;
+                cols.push({ name, typeName, value });
+              }
+            }
+            return cols;
+          };
           switch (cmd) {
             case "plugin:event|listen": {
               const w = window as unknown as {
@@ -145,6 +226,15 @@ export async function stubBackend(
               )
                 throw { kind: "connect", message: "Connection refused" };
               const p = profiles.find((x) => x.id === args.id)!;
+              (window as unknown as { __pg?: boolean }).__pg =
+                p.driver === "postgres";
+              if (p.driver === "postgres")
+                return {
+                  driver: "PostgreSQL",
+                  address: `${p.host}:${p.port}`,
+                  database: 0,
+                  store: "sql",
+                };
               if (p.driver === "mysql")
                 return {
                   driver: "MySQL 8.0.36",
@@ -282,11 +372,20 @@ export async function stubBackend(
               };
             case "test_connection": {
               const prof = args.profile as { driver: string };
-              return prof.driver === "mysql"
-                ? { product: "MySQL", version: "8.0.36", keyCount: null }
-                : { product: "Redis", version: "6.2.14", keyCount: 7 };
+              return prof.driver === "postgres"
+                ? { product: "PostgreSQL", version: "16.4", keyCount: null }
+                : prof.driver === "mysql"
+                  ? { product: "MySQL", version: "8.0.36", keyCount: null }
+                  : { product: "Redis", version: "6.2.14", keyCount: 7 };
             }
             case "list_schemas":
+              if ((window as unknown as { __pg?: boolean }).__pg)
+                return [
+                  { name: "billing", system: false },
+                  { name: "information_schema", system: true },
+                  { name: "pg_catalog", system: true },
+                  { name: "public", system: false },
+                ];
               return [
                 ...Array.from({ length: extraSchemas }, (_, i) => ({
                   name: `archive_${String(i).padStart(2, "0")}`,
@@ -299,12 +398,31 @@ export async function stubBackend(
               ];
             case "list_tables": {
               const schema = (args as unknown as { schema: string }).schema;
+              if ((window as unknown as { __pg?: boolean }).__pg) {
+                if (schema === "billing")
+                  return [
+                    { name: "invoices", kind: "table", estimatedRows: 90 },
+                  ];
+                if (schema !== "public") return [];
+                return [
+                  { name: "Weird Name", kind: "table", estimatedRows: 1 },
+                  { name: "customers", kind: "table", estimatedRows: 1200 },
+                  { name: "mv_plan_counts", kind: "matview", estimatedRows: 3 },
+                  { name: "orders", kind: "table", estimatedRows: 48213 },
+                  {
+                    name: "paying_customers",
+                    kind: "view",
+                    estimatedRows: null,
+                  },
+                ];
+              }
               if (schema !== "shop") return [];
               return [
                 { name: "customers", kind: "table", estimatedRows: 1200 },
                 { name: "events", kind: "table", estimatedRows: 250 },
                 { name: "orders", kind: "table", estimatedRows: 48213 },
                 { name: "paying_customers", kind: "view", estimatedRows: null },
+                { name: "ledger", kind: "table", estimatedRows: 6 },
                 { name: "settings", kind: "table", estimatedRows: 1 },
                 { name: "weird name", kind: "table", estimatedRows: 1 },
               ];
@@ -328,6 +446,65 @@ export async function stubBackend(
                 comment: null,
                 ...extra,
               });
+              if (t === "ledger")
+                return {
+                  kind: "table",
+                  engine: "InnoDB",
+                  comment: null,
+                  columns: ledger().map((c, i) =>
+                    col(c.name, c.typeName.toLowerCase(), {
+                      key: i === 0 ? "PRI" : null,
+                    }),
+                  ),
+                  indexes: [],
+                };
+              if (
+                t === "orders" &&
+                (window as unknown as { __pg?: boolean }).__pg
+              )
+                return {
+                  kind: "table",
+                  engine: null,
+                  comment: null,
+                  columns: [
+                    col("id", "bigint", {
+                      key: "PRI",
+                      extra: "generated by default as identity",
+                    }),
+                    col("customer_id", "bigint"),
+                    col("status", "plan", { default: "'pending'::plan" }),
+                    col("total", "numeric(10,2)"),
+                    col("items", "jsonb", { nullable: true }),
+                    col("created_at", "timestamp with time zone"),
+                  ],
+                  indexes: [
+                    {
+                      name: "orders_pkey",
+                      unique: true,
+                      columns: ["id"],
+                      indexType: "btree",
+                      definition:
+                        "CREATE UNIQUE INDEX orders_pkey ON public.orders USING btree (id)",
+                    },
+                    {
+                      name: "idx_orders_big",
+                      unique: false,
+                      columns: ["total"],
+                      indexType: "btree · partial",
+                      definition:
+                        "CREATE INDEX idx_orders_big ON public.orders USING btree (total) WHERE (total > 1000)",
+                    },
+                  ],
+                  foreignKeys: [
+                    {
+                      name: "orders_customer_id_fkey",
+                      columns: ["customer_id"],
+                      refSchema: "public",
+                      refTable: "customers",
+                      refColumns: ["id"],
+                    },
+                  ],
+                };
               if (t === "orders")
                 return {
                   kind: "table",
@@ -396,6 +573,7 @@ export async function stubBackend(
                 __rowCalls?: { table: string; offset: number }[];
                 __rowViews?: unknown[];
                 __FAIL_ROWS__?: boolean;
+                __pg?: boolean;
               };
               // A test can make reads slow, to look at the loading state.
               if (w.__rowDelay)
@@ -417,6 +595,46 @@ export async function stubBackend(
                   kind: "sql",
                   message: "Unknown column 'boom' in 'where clause'",
                 };
+              if (a.table === "orders" && w.__pg) {
+                return {
+                  columns: [
+                    { name: "id", typeName: "INT8" },
+                    { name: "status", typeName: "TEXT" },
+                    { name: "total", typeName: "NUMERIC" },
+                    { name: "items", typeName: "JSONB" },
+                    { name: "created_at", typeName: "TIMESTAMPTZ" },
+                    { name: "tags", typeName: "TEXT[]" },
+                  ],
+                  rows: [
+                    [
+                      "48213",
+                      "paid",
+                      "184.50",
+                      '{"sku": "BK-114", "qty": 2}',
+                      "2026-11-11 09:42:07.5+00",
+                      '{gift,"rush order"}',
+                    ],
+                    [
+                      "48212",
+                      "pending",
+                      "62.00",
+                      null,
+                      "2026-11-10 19:27:03+00",
+                      "{}",
+                    ],
+                    [
+                      "48211",
+                      "paid",
+                      "310.25",
+                      '{"id": 9007199254740993}',
+                      "2026-11-09 12:18:42+07",
+                      "{a}",
+                    ],
+                  ],
+                  offset: 0,
+                  hasMore: false,
+                };
+              }
               if (a.table === "orders") {
                 const columns = [
                   { name: "id", typeName: "BIGINT" },
@@ -481,6 +699,18 @@ export async function stubBackend(
                   );
                 }
                 return { columns, rows, offset: 0, hasMore: false };
+              }
+              if (a.table === "ledger") {
+                const cols = ledger();
+                return {
+                  columns: cols.map((c) => ({
+                    name: c.name,
+                    typeName: c.typeName,
+                  })),
+                  rows: [cols.map((c) => c.value)],
+                  offset: 0,
+                  hasMore: false,
+                };
               }
               if (a.table === "settings") {
                 // Many columns with long names and no JSON: the row dialog has to lay them out.
@@ -669,6 +899,7 @@ export async function stubBackend(
       profiles,
       extraKeys,
       options.mysql ? mysqlProfile : null,
+      options.postgres ? postgresProfile : null,
       options.extraSchemas ?? 0,
     ] as const,
   );
