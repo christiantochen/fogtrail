@@ -178,6 +178,7 @@ export function SqlSidebar() {
         <div className="filter__box">
           <input
             ref={input}
+            id="table-filter"
             type="search"
             aria-label="Filter tables"
             placeholder="Filter tables"

@@ -22,9 +22,21 @@ export function menuHandlers(qc: QueryClient): MenuHandlers {
       else ui().edit(null);
     },
     search: () => {
-      if (!ui().connected) return;
-      ui().setView("keys");
-      document.getElementById("key-search")?.focus();
+      const { connected } = ui();
+      if (!connected) return;
+      // Find where you are: a dialog's own search box comes first, and nothing
+      // behind a dialog takes the focus.
+      const modal = document.querySelector('[aria-modal="true"]');
+      let box: HTMLInputElement | null | undefined;
+      if (modal) box = modal.querySelector<HTMLInputElement>(".find__input");
+      else if (connected.store === "sql")
+        box = document.querySelector<HTMLInputElement>("#table-filter");
+      else {
+        ui().setView("keys");
+        box = document.querySelector<HTMLInputElement>("#key-search");
+      }
+      box?.focus();
+      box?.select();
     },
     refresh: () => {
       if (!ui().connected) return;
