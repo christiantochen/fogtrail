@@ -43,6 +43,7 @@ export function menuHandlers(qc: QueryClient): MenuHandlers {
       refreshAll(qc);
     },
     quickOpen: () => ui().setQuickOpen(true),
+    shortcuts: () => ui().setShortcuts(true),
     findValue: () => window.dispatchEvent(new Event(FIND_VALUE_EVENT)),
     checkUpdates: () => void checkForUpdates(true),
     about: () => ui().setAbout(true),

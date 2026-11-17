@@ -16,6 +16,7 @@ pub mod id {
     pub const SERVER_INFO: &str = "server-info";
     pub const QUICK_OPEN: &str = "quick-open";
     pub const FIND_VALUE: &str = "find-value";
+    pub const SHORTCUTS: &str = "shortcuts";
     pub const CHECK_UPDATES: &str = "check-updates";
     #[cfg(not(target_os = "macos"))]
     pub const ABOUT: &str = "about";
@@ -36,6 +37,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let server_info = item(id::SERVER_INFO, "Server Info", "CmdOrCtrl+I")?;
     let quick_open = item(id::QUICK_OPEN, "Quick Open…", "CmdOrCtrl+K")?;
     let find_value = item(id::FIND_VALUE, "Find in Value", "CmdOrCtrl+Shift+F")?;
+    let shortcuts = MenuItemBuilder::with_id(id::SHORTCUTS, "Keyboard Shortcuts").build(app)?;
     // macOS has a working built-in About window. Windows has the menu item but it
     // does nothing, so there the item opens our own dialog.
     #[cfg(not(target_os = "macos"))]
@@ -116,10 +118,17 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     #[cfg(not(target_os = "macos"))]
     {
         let help = SubmenuBuilder::new(app, "Help")
-            .item(&check_updates)
+            .item(&shortcuts)
             .separator()
+            .item(&check_updates)
             .item(&about)
             .build()?;
+        menu = menu.item(&help);
+    }
+    // On a Mac, About and Check for Updates are in the app menu, so Help holds just this.
+    #[cfg(target_os = "macos")]
+    {
+        let help = SubmenuBuilder::new(app, "Help").item(&shortcuts).build()?;
         menu = menu.item(&help);
     }
 

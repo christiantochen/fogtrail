@@ -3084,3 +3084,116 @@ button.jchip--open:focus-visible {
 .dropdown__opt--active .dropdown__meta {
   color: #18212b;
 }
+
+/* Keyboard shortcuts sheet */
+.scrim--top {
+  z-index: 60;
+}
+.shortcuts {
+  width: min(1040px, 100%);
+  max-height: min(760px, 100%);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  overflow: hidden;
+}
+.shortcuts__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.shortcuts__title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.shortcuts__title h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.shortcuts__note {
+  color: var(--secondary);
+  font-size: 12px;
+}
+.shortcuts__body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 40px;
+  align-content: start;
+  padding: 8px 24px 16px;
+  overflow: auto;
+}
+.shortcuts__col {
+  min-width: 0;
+}
+.shortcuts__group {
+  padding-top: 14px;
+}
+.shortcuts__group h3 {
+  margin: 0;
+  padding: 0 4px 6px;
+}
+.shortcuts__group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.shortcuts__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.shortcuts__row > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.shortcuts__keys {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--main);
+  color: var(--ink);
+  font:
+    500 12px/1 "IBM Plex Mono",
+    monospace;
+}
+.shortcuts__foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--secondary);
+  font-size: 12px;
+}
+@media (width < 900px) {
+  .shortcuts__body {
+    grid-template-columns: 1fr;
+  }
+}

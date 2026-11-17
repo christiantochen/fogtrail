@@ -7,6 +7,7 @@ export interface MenuHandlers {
   serverInfo: () => void;
   quickOpen: () => void;
   findValue: () => void;
+  shortcuts: () => void;
   checkUpdates: () => void;
   about: () => void;
   themeSystem: () => void;
@@ -23,6 +24,7 @@ const ROUTES = new Map<string, keyof MenuHandlers>([
   ["server-info", "serverInfo"],
   ["quick-open", "quickOpen"],
   ["find-value", "findValue"],
+  ["shortcuts", "shortcuts"],
   ["check-updates", "checkUpdates"],
   ["about", "about"],
   ["theme-system", "themeSystem"],

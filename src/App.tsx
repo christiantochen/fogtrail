@@ -8,6 +8,7 @@ import { Main } from "./components/Main";
 import { MenuBridge } from "./components/MenuBridge";
 import { ThemeBridge } from "./components/ThemeBridge";
 import { QuickOpen } from "./components/QuickOpen";
+import { ShortcutsDialog } from "./components/ShortcutsDialog";
 import { Resuming } from "./components/Resuming";
 import { Sidebar } from "./components/Sidebar";
 import { SqlMain } from "./components/SqlMain";
@@ -55,6 +56,24 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // "?" opens the shortcuts sheet unless you are typing. Cmd/Ctrl+Shift+/ types the same "?".
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "?" || e.altKey) return;
+      if (
+        (e.target as HTMLElement | null)?.closest(
+          "input, textarea, select, [contenteditable]",
+        )
+      )
+        return;
+      e.preventDefault();
+      const ui = useUi.getState();
+      ui.setShortcuts(!ui.shortcuts);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
@@ -62,6 +81,7 @@ export default function App() {
         <ThemeBridge />
         <CopyToast />
         <QuickOpen />
+        <ShortcutsDialog />
         <About />
         <UpdateToast />
         {frameKnown && (
