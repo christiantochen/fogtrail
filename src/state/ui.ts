@@ -116,6 +116,9 @@ interface UiState {
   /** Quick open (Cmd/Ctrl+K) is showing. */
   quickOpen: boolean;
   setQuickOpen: (open: boolean) => void;
+  /** The keyboard shortcuts sheet. */
+  shortcuts: boolean;
+  setShortcuts: (open: boolean) => void;
   /** The About dialog is showing. */
   about: boolean;
   /** We draw the title bar and menus ourselves (Windows), not the OS. Null until known. */
@@ -170,6 +173,8 @@ export const useUi = create<UiState>((set) => ({
   quickOpen: false,
   // Quick open searches keys, which a SQL connection doesn't have.
   setQuickOpen: (quickOpen) => set({ quickOpen }),
+  shortcuts: false,
+  setShortcuts: (shortcuts) => set({ shortcuts }),
   customTitleBar: null,
   setCustomTitleBar: (customTitleBar) => set({ customTitleBar }),
   about: false,

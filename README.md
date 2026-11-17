@@ -108,15 +108,34 @@ Names only. Values never go in this repo.
 
 Use Cmd on macOS and Ctrl on Windows.
 
-| Shortcut             | Action                                                            |
-| -------------------- | ----------------------------------------------------------------- |
-| Cmd/Ctrl + F         | Find: filter keys or tables, or search an open row (or press `/`) |
-| Cmd/Ctrl + K         | Quick open: jump to a key or a table, or switch connection        |
-| Cmd/Ctrl + R         | Refresh keys, value and server info                               |
-| Cmd/Ctrl + I         | Show or hide server info                                          |
-| Cmd/Ctrl + N         | New connection                                                    |
-| Cmd/Ctrl + Shift + O | Back to connections                                               |
-| Arrow keys           | Move through the key list, open and close folders                 |
+<!-- shortcuts:start -->
+
+| Shortcut             | Action                                             | Where                |
+| -------------------- | -------------------------------------------------- | -------------------- |
+| Cmd/Ctrl + K         | Quick open: tables, keys, connections              | Everywhere           |
+| Cmd/Ctrl + F         | Find: filter tables or keys, or search an open row | Everywhere           |
+| /                    | Jump to the filter                                 | Everywhere           |
+| Cmd/Ctrl + R         | Refresh                                            | Everywhere           |
+| Cmd/Ctrl + N         | New connection                                     | Everywhere           |
+| Shift + Cmd/Ctrl + O | Back to connections                                | Everywhere           |
+| ?                    | This list                                          | Everywhere           |
+| ↑ / ↓                | Move between rows                                  | Table rows           |
+| Enter                | Open the row panel (or Space)                      | Table rows           |
+| E                    | Expand the row in a dialog                         | Table rows           |
+| Shift + Cmd/Ctrl + C | Copy the table name                                | Table rows           |
+| ↑ / ↓                | Previous or next row                               | Row panel and dialog |
+| /                    | Find in the row                                    | Row panel and dialog |
+| E                    | Expand to a dialog (from the panel)                | Row panel and dialog |
+| Esc                  | Clear the search, then close                       | Row panel and dialog |
+| Cmd/Ctrl + Enter     | Run the query                                      | Query editor         |
+| Ctrl + Space         | Show suggestions                                   | Query editor         |
+| Tab                  | Accept a suggestion (or Enter)                     | Query editor         |
+| ↑ / ↓                | Move through keys                                  | Key browser (Redis)  |
+| ← / →                | Open or close a folder                             | Key browser (Redis)  |
+| Shift + Cmd/Ctrl + F | Find in the value                                  | Key browser (Redis)  |
+| Cmd/Ctrl + I         | Server info                                        | Key browser (Redis)  |
+
+<!-- shortcuts:end -->
 
 The window remembers its size and position between launches.
 

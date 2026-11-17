@@ -75,6 +75,8 @@ export const MENUS: Menu[] = [
     label: "Help",
     mnemonic: "h",
     items: [
+      { id: "shortcuts", label: "Keyboard Shortcuts", keys: "?" },
+      "-",
       { id: "check-updates", label: "Check for Updates…" },
       "-",
       { id: "about", label: "About Fogtrail" },
