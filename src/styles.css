@@ -2499,9 +2499,10 @@ button.jchip--open:focus-visible {
   background: var(--scrim);
 }
 .rowdialog {
-  width: min(1100px, 100%);
+  /* 1100px on a small window, growing with a large one (70% wide, 90% tall) up to a limit. */
+  width: min(clamp(1100px, 70vw, 1680px), 100%);
   /* As tall as its rows, up to a limit; a wide table or one JSON value gets the full height. */
-  max-height: min(700px, 100%);
+  max-height: min(clamp(700px, 90vh, 1200px), 100%);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
@@ -2511,7 +2512,7 @@ button.jchip--open:focus-visible {
   overflow: hidden;
 }
 .rowdialog--tall {
-  height: min(700px, 100%);
+  height: min(clamp(700px, 90vh, 1200px), 100%);
 }
 .rowdialog__head {
   flex: none;
@@ -2525,6 +2526,13 @@ button.jchip--open:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.rowdialog__head .rowpanel__label {
+  white-space: nowrap;
+}
+.rowdialog__head .badge {
+  flex: none;
+  white-space: nowrap;
 }
 .rowdialog__kbd {
   margin-left: 6px;

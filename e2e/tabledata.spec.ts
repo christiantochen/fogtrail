@@ -945,6 +945,78 @@ test.describe("the row dialog", () => {
     await expect(page.getByLabel("Filter tables")).not.toBeFocused();
   });
 
+  test("one value's header keeps the title whole and puts the tools on a second row", async ({
+    page,
+  }) => {
+    const d = await openDialog(page);
+    await d.locator('[data-open="5"]').click();
+    const solo = page.getByRole("dialog", { name: "items" });
+    const box = async (loc: ReturnType<typeof solo.locator>) =>
+      (await loc.boundingBox())!;
+    const back = await box(solo.getByRole("button", { name: "Back to row" }));
+    const close = await box(solo.getByRole("button", { name: /^Close/ }));
+    const tabs = await box(solo.getByRole("tablist", { name: "Value view" }));
+    const find = await box(
+      solo.getByRole("searchbox", { name: "Find in value" }),
+    );
+    const copy = await box(solo.getByRole("button", { name: "Copy JSON" }));
+    // Back and Close share the top row; the tabs, search and Copy share the next one.
+    expect(Math.abs(back.y - close.y)).toBeLessThan(2);
+    expect(tabs.y).toBeGreaterThan(back.y + back.height - 1);
+    expect(
+      Math.abs(tabs.y + tabs.height / 2 - (find.y + find.height / 2)),
+    ).toBeLessThan(2);
+    expect(
+      Math.abs(copy.y + copy.height / 2 - (tabs.y + tabs.height / 2)),
+    ).toBeLessThan(2);
+    // The label is on one line and the name is not cut off.
+    const label = await box(solo.locator(".rowpanel__label"));
+    expect(label.height).toBeLessThan(20);
+    const name = solo.locator(".rowpanel__name");
+    expect(await name.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+      true,
+    );
+    await expect(solo.locator(".rowdialog__foot")).toContainText(/\d+ lines?/);
+  });
+
+  test("on a large window the dialog grows, for one value and for the list of columns", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await openOrders(page);
+    // The middle of a row is a JSON chip on a wide window, so click the id cell.
+    await page
+      .getByRole("table", { name: "Rows of orders" })
+      .locator("tbody tr")
+      .nth(0)
+      .locator("td")
+      .first()
+      .click();
+    await panel(page)
+      .getByRole("button", { name: "Expand row in a dialog" })
+      .click();
+    const d = dialog(page);
+    const list = (await d.boundingBox())!;
+    expect(Math.abs(list.width - 1344)).toBeLessThan(2);
+    await d.locator('[data-open="5"]').click();
+    const solo = (await page
+      .getByRole("dialog", { name: "items" })
+      .boundingBox())!;
+    expect(Math.abs(solo.width - 1344)).toBeLessThan(2);
+    expect(Math.abs(solo.height - 972)).toBeLessThan(2);
+  });
+
+  test("on a 1280px window the dialog stays 1100px wide", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 820 });
+    const d = await openDialog(page);
+    await d.locator('[data-open="5"]').click();
+    const solo = (await page
+      .getByRole("dialog", { name: "items" })
+      .boundingBox())!;
+    expect(Math.abs(solo.width - 1100)).toBeLessThan(2);
+    expect(Math.abs(solo.height - 738)).toBeLessThan(2);
+  });
+
   test("the term stays while moving between rows, and resets when the dialog closes", async ({
     page,
   }) => {

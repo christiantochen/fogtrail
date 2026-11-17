@@ -427,6 +427,7 @@ function SoloJson({
 }) {
   const fold = useJsonFold(field.pretty, false);
   const raw = view === "raw";
+  const lines = (raw ? field.raw : field.pretty).split("\n").length;
   useRevealHit(fold, field.pretty, raw ? [] : ranges, current);
   // JSON.parse keeps only what a double can hold, so a big id would read differently here.
   const inexact =
@@ -451,6 +452,9 @@ function SoloJson({
             )}
           </span>
         </div>
+        {closeButton}
+      </div>
+      <div className="rowdialog__bar">
         <div className="tabs" role="tablist" aria-label="Value view">
           {(["formatted", "raw"] as const).map((v) => (
             <button
@@ -466,6 +470,7 @@ function SoloJson({
           ))}
         </div>
         {searchBox}
+        <span className="rowdialog__spacer" />
         {!raw && <FoldAllButton fold={fold} labeled />}
         <button
           type="button"
@@ -474,7 +479,6 @@ function SoloJson({
         >
           {raw ? "Copy raw" : "Copy JSON"}
         </button>
-        {closeButton}
       </div>
       {inexact && (
         <p className="rowdialog__notice" role="status">
@@ -495,6 +499,11 @@ function SoloJson({
             folding={fold.folding}
           />
         )}
+      </div>
+      <div className="rowdialog__foot">
+        <span>
+          {lines} {lines === 1 ? "line" : "lines"}
+        </span>
       </div>
     </>
   );
