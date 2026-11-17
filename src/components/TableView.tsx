@@ -257,10 +257,17 @@ function DataGrid({
       ? { left: lefts[name], last: name === live[live.length - 1] }
       : undefined;
   const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
-  const move = (delta: number) =>
-    setOpen((i) =>
-      i === null ? i : Math.min(page.rows.length - 1, Math.max(0, i + delta)),
-    );
+  const move = (delta: number) => {
+    const next =
+      open === null
+        ? open
+        : Math.min(page.rows.length - 1, Math.max(0, open + delta));
+    setOpen(next);
+    // Keep the open row visible when it is moved with the arrows or buttons.
+    if (next !== null) {
+      rowRefs.current[next]?.scrollIntoView({ block: "nearest" });
+    }
+  };
 
   return (
     <div className="sqldata">
