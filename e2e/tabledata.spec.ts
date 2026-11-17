@@ -714,6 +714,24 @@ test.describe("the row dialog", () => {
     ).toBeDisabled();
   });
 
+  test("Find focuses and selects the table filter on a SQL connection", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    const filter = page.getByLabel("Filter tables");
+    await filter.fill("ord");
+    await page.getByRole("table", { name: "Rows of orders" }).click();
+    await expect(filter).not.toBeFocused();
+    await page.waitForFunction(() => "__menu" in window);
+    await page.evaluate(() =>
+      (window as unknown as { __menu: (id: string) => void }).__menu("search"),
+    );
+    await expect(filter).toBeFocused();
+    // The old text is selected, so typing replaces it.
+    await page.keyboard.type("cus");
+    await expect(filter).toHaveValue("cus");
+  });
+
   test("a row opens from the keyboard", async ({ page }) => {
     await openOrders(page);
     const row = page
@@ -862,6 +880,21 @@ test.describe("the row dialog", () => {
     await expect(find).toHaveValue("");
     await page.keyboard.press("Escape");
     await expect(d).toHaveCount(0);
+  });
+
+  test("the Find menu item (Cmd+F on a Mac) focuses the dialog's search", async ({
+    page,
+  }) => {
+    const d = await openDialog(page);
+    const find = d.getByRole("searchbox", { name: "Find in row" });
+    await expect(find).not.toBeFocused();
+    await page.waitForFunction(() => "__menu" in window);
+    await page.evaluate(() =>
+      (window as unknown as { __menu: (id: string) => void }).__menu("search"),
+    );
+    await expect(find).toBeFocused();
+    // Nothing behind the dialog takes the focus.
+    await expect(page.getByLabel("Filter tables")).not.toBeFocused();
   });
 
   test("the term stays while moving between rows, and resets when the dialog closes", async ({

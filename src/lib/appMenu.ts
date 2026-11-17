@@ -51,7 +51,7 @@ export const MENUS: Menu[] = [
     mnemonic: "v",
     items: [
       { id: "quick-open", label: "Quick Open…", keys: "Ctrl+K" },
-      { id: "search", label: "Search Keys", keys: "Ctrl+F" },
+      { id: "search", label: "Find", keys: "Ctrl+F" },
       { id: "find-value", label: "Find in Value", keys: "Ctrl+Shift+F" },
       { id: "refresh", label: "Refresh", keys: "Ctrl+R" },
       { id: "server-info", label: "Server Info", keys: "Ctrl+I" },

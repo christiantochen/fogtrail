@@ -31,7 +31,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     };
     let new_connection = item(id::NEW_CONNECTION, "New Connection…", "CmdOrCtrl+N")?;
     let connections = item(id::CONNECTIONS, "Connections", "CmdOrCtrl+Shift+O")?;
-    let search = item(id::SEARCH, "Search Keys", "CmdOrCtrl+F")?;
+    let search = item(id::SEARCH, "Find", "CmdOrCtrl+F")?;
     let refresh = item(id::REFRESH, "Refresh", "CmdOrCtrl+R")?;
     let server_info = item(id::SERVER_INFO, "Server Info", "CmdOrCtrl+I")?;
     let quick_open = item(id::QUICK_OPEN, "Quick Open…", "CmdOrCtrl+K")?;
