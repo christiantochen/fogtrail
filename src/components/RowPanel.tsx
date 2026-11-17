@@ -37,10 +37,22 @@ export function RowPanel({
       className="rowpanel"
       aria-label="Row details"
       onKeyDown={(e) => {
+        const typing = (e.target as HTMLElement).closest("input, textarea");
         if (e.key === "Escape") onClose();
         else if (e.key === "e" && !e.metaKey && !e.ctrlKey && !e.altKey) {
           e.preventDefault();
           onExpand(null);
+        } else if (
+          (e.key === "ArrowUp" || e.key === "ArrowDown") &&
+          !typing &&
+          !e.metaKey &&
+          !e.ctrlKey &&
+          !e.altKey &&
+          !e.shiftKey
+        ) {
+          // Same as the ↑ ↓ buttons, so the keys work wherever focus is in the panel.
+          e.preventDefault();
+          onMove(e.key === "ArrowDown" ? 1 : -1);
         }
       }}
     >
