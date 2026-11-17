@@ -714,6 +714,54 @@ test.describe("the row dialog", () => {
     ).toBeDisabled();
   });
 
+  test("the arrow keys move between rows from inside the panel", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    const rows = page
+      .getByRole("table", { name: "Rows of orders" })
+      .locator("tbody tr");
+    await rows.nth(0).click();
+    const panel = page.getByRole("complementary", { name: "Row details" });
+    // Opening the panel moves focus into it, so the keys work straight away.
+    await page.keyboard.press("ArrowDown");
+    await expect(panel).toContainText("Row 2 of 3");
+    await page.keyboard.press("ArrowDown");
+    await expect(panel).toContainText("Row 3 of 3");
+    await page.keyboard.press("ArrowDown");
+    await expect(panel).toContainText("Row 3 of 3");
+    await page.keyboard.press("ArrowUp");
+    await expect(panel).toContainText("Row 2 of 3");
+    await expect(rows.nth(1)).toHaveAttribute("aria-current", "true");
+    await page.keyboard.press("ArrowUp");
+    await page.keyboard.press("ArrowUp");
+    await expect(panel).toContainText("Row 1 of 3");
+  });
+
+  test("the arrow keys leave the panel alone while typing or with a modifier", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    await page
+      .getByRole("table", { name: "Rows of orders" })
+      .locator("tbody tr")
+      .nth(0)
+      .click();
+    const panel = page.getByRole("complementary", { name: "Row details" });
+    await page.keyboard.press("Shift+ArrowDown");
+    await page.keyboard.press("Alt+ArrowDown");
+    await expect(panel).toContainText("Row 1 of 3");
+    // Typing in a box keeps the arrows for the box.
+    await panel.evaluate((el) => {
+      const input = document.createElement("input");
+      input.id = "panel-test-input";
+      el.appendChild(input);
+    });
+    await panel.locator("#panel-test-input").focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(panel).toContainText("Row 1 of 3");
+  });
+
   test("a row opens from the keyboard", async ({ page }) => {
     await openOrders(page);
     const row = page

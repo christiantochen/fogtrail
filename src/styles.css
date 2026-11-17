@@ -2323,6 +2323,8 @@ tr.row--fresh td {
 }
 .sqlrow {
   cursor: pointer;
+  /* Keep a scrolled-to row clear of the sticky header. */
+  scroll-margin-top: 48px;
 }
 .sqlrow:hover td {
   background: var(--hover);
