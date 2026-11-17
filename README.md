@@ -111,6 +111,7 @@ Use Cmd on macOS and Ctrl on Windows.
 | Shortcut             | Action                                                            |
 | -------------------- | ----------------------------------------------------------------- |
 | Cmd/Ctrl + F         | Find: filter keys or tables, or search an open row (or press `/`) |
+| Cmd/Ctrl + K         | Quick open: jump to a key or a table, or switch connection        |
 | Cmd/Ctrl + R         | Refresh keys, value and server info                               |
 | Cmd/Ctrl + I         | Show or hide server info                                          |
 | Cmd/Ctrl + N         | New connection                                                    |

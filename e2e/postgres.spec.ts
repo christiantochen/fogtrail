@@ -17,6 +17,75 @@ async function openShop(page: Page) {
 const table = (page: Page, name: string | RegExp) =>
   page.getByRole("list", { name: "Tables" }).getByRole("button", { name });
 
+test.describe("quick open on PostgreSQL", () => {
+  const quick = (page: Page) =>
+    page.getByRole("dialog", { name: "Quick open" });
+
+  test("finds tables in every schema, with the schema in front", async ({
+    page,
+  }) => {
+    await openShop(page);
+    await page.keyboard.press("Control+k");
+    const input = quick(page).getByRole("combobox");
+    await input.fill("i");
+    // Names that start with the text come first, then the others.
+    await expect(quick(page).getByRole("option").first()).toContainText(
+      "billing.invoices",
+    );
+    await input.fill("ord");
+    await expect(quick(page).getByRole("option")).toContainText([
+      "public.orders",
+    ]);
+    await input.fill("mv_");
+    const option = quick(page).getByRole("option").first();
+    await expect(option).toContainText("public.mv_plan_counts");
+    await expect(option).toContainText("matview");
+    await expect(option).toContainText("~3");
+  });
+
+  test("opening a table of another schema switches the schema", async ({
+    page,
+  }) => {
+    await openShop(page);
+    await expect(box(page, "Schema")).toHaveAttribute("data-value", "public");
+    await page.keyboard.press("Control+k");
+    await quick(page).getByRole("combobox").fill("inv");
+    await page.keyboard.press("Enter");
+    await expect(quick(page)).toHaveCount(0);
+    await expect(box(page, "Schema")).toHaveAttribute("data-value", "billing");
+    await expect(
+      page.getByRole("table", { name: "Rows of invoices" }),
+    ).toBeVisible();
+  });
+
+  test("with nothing typed it lists the tables opened last", async ({
+    page,
+  }) => {
+    await openShop(page);
+    await page.keyboard.press("Control+k");
+    await expect(quick(page)).not.toContainText("Recent");
+    await page.keyboard.press("Escape");
+    await table(page, /^customers/).click();
+    await table(page, /^orders/).click();
+    await page.keyboard.press("Control+k");
+    const options = quick(page).getByRole("option");
+    await expect(options.nth(0)).toContainText("public.orders");
+    await expect(options.nth(1)).toContainText("public.customers");
+    await expect(quick(page).getByText("Recent")).toBeVisible();
+  });
+
+  test("Esc closes it and nothing else changes", async ({ page }) => {
+    await openShop(page);
+    await table(page, /^orders/).click();
+    await page.keyboard.press("Control+k");
+    await page.keyboard.press("Escape");
+    await expect(quick(page)).toHaveCount(0);
+    await expect(
+      page.getByRole("table", { name: "Rows of orders" }),
+    ).toBeVisible();
+  });
+});
+
 test.describe("browsing PostgreSQL", () => {
   test("opens the public schema and hides the system ones", async ({
     page,

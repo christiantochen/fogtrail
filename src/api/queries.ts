@@ -6,7 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { useMemo } from "react";
 import type { Known, TableRef } from "../lib/sqlComplete";
-import { sqlDialectOf } from "../lib/sql";
+import { sqlDialectOf, type TableHit } from "../lib/sql";
 import { globFor } from "../lib/tree";
 import { useUi } from "../state/ui";
 import {
@@ -125,6 +125,52 @@ export const useTables = (schema: string | null) =>
     enabled: schema !== null,
     retry: false,
   });
+
+/** Most schemas whose tables quick open will read, so a server with hundreds does not get hundreds of queries. */
+export const QUICK_SCHEMAS = 40;
+
+/**
+ * Every table of every user schema, for quick open. It reads the same cached lists as
+ * the sidebar, and only while `enabled`. `current` is kept even if it is a system schema.
+ */
+export function useAllTables(enabled: boolean, current: string | null) {
+  const schemas = useQuery({
+    queryKey: ["schemas"],
+    queryFn: listSchemas,
+    retry: false,
+    enabled,
+  });
+  const names = useMemo(
+    () =>
+      (schemas.data ?? [])
+        .filter((s) => !s.system || s.name === current)
+        .slice(0, QUICK_SCHEMAS)
+        .map((s) => s.name),
+    [schemas.data, current],
+  );
+  const lists = useQueries({
+    queries: names.map((schema) => ({
+      queryKey: ["tables", schema],
+      queryFn: () => listTables(schema),
+      retry: false,
+      enabled,
+    })),
+  });
+  const hits: TableHit[] = lists.flatMap((l, i) =>
+    (l.data ?? []).map((t) => ({
+      schema: names[i],
+      table: t.name,
+      kind: t.kind,
+      estimatedRows: t.estimatedRows,
+    })),
+  );
+  return {
+    hits,
+    loading: schemas.isFetching || lists.some((l) => l.isFetching),
+    capped:
+      (schemas.data ?? []).filter((s) => !s.system).length > QUICK_SCHEMAS,
+  };
+}
 
 export const useStructure = (schema: string, table: string) =>
   useQuery({

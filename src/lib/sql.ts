@@ -425,3 +425,46 @@ export function toggleColumnPin(
   if (pinned.includes(name)) return pinned.filter((p) => p !== name);
   return pinned.length >= max ? pinned : [...pinned, name];
 }
+
+export interface TableHit {
+  schema: string;
+  table: string;
+  kind: TableInfo["kind"];
+  estimatedRows: number | null;
+}
+
+/**
+ * Tables whose name contains the typed text, across schemas. Names that start with
+ * it come first, then names that contain it, each in schema and name order. Text
+ * like "billing.inv" also matches on the schema, so it can narrow to one schema.
+ */
+export function searchTables(
+  all: readonly TableHit[],
+  term: string,
+  limit = 30,
+): TableHit[] {
+  const needle = term.trim().toLowerCase();
+  if (needle === "") return [];
+  const ranked: [number, TableHit][] = [];
+  for (const t of all) {
+    const name = t.table.toLowerCase();
+    const full = `${t.schema}.${t.table}`.toLowerCase();
+    const rank = name.startsWith(needle)
+      ? 0
+      : name.includes(needle)
+        ? 1
+        : full.includes(needle)
+          ? 2
+          : -1;
+    if (rank >= 0) ranked.push([rank, t]);
+  }
+  return ranked
+    .sort(
+      (a, b) =>
+        a[0] - b[0] ||
+        a[1].schema.localeCompare(b[1].schema) ||
+        a[1].table.localeCompare(b[1].table),
+    )
+    .slice(0, limit)
+    .map(([, t]) => t);
+}

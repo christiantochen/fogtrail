@@ -1,7 +1,14 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { connect } from "../api/browse";
-import { useProfiles, useQuickKeys } from "../api/queries";
+import {
+  QUICK_SCHEMAS,
+  useAllTables,
+  useProfiles,
+  useQuickKeys,
+} from "../api/queries";
+import { approxCompact, searchTables, type TableHit } from "../lib/sql";
+import { dropBrowsingCaches } from "../lib/refreshAll";
 import { useDebounced } from "../lib/useDebounced";
 import { useUi } from "../state/ui";
 
@@ -9,11 +16,14 @@ interface Option {
   id: string;
   group: string;
   label: string;
+  /** Dimmed text before the label, such as the schema of a table. */
+  prefix?: string;
+  badge?: string;
   hint?: string;
   run: () => void;
 }
 
-/** Cmd/Ctrl+K: jump to a key or switch connection by typing a few letters. */
+/** Cmd/Ctrl+K: jump to a key or a table, or switch connection, by typing a few letters. */
 export function QuickOpen() {
   const open = useUi((s) => s.quickOpen);
   if (!open) return null;
@@ -32,17 +42,21 @@ function Palette() {
   const connectedId = useUi((s) => s.connectedId);
   const recent = useUi((s) => s.recent);
   const pins = useUi((s) => s.pins);
+  const recentTables = useUi((s) => s.recentTables);
+  const sqlSchema = useUi((s) => s.sqlSchema);
+  const openTable = useUi((s) => s.openTable);
   const reveal = useUi((s) => s.reveal);
   const setConnected = useUi((s) => s.setConnected);
   const close = () => useUi.getState().setQuickOpen(false);
 
   const profiles = useProfiles();
-  const found = useQuickKeys(connected ? term : "");
+  const isSql = connected?.store === "sql";
+  const found = useQuickKeys(connected && !isSql ? term : "");
+  const tables = useAllTables(isSql, sqlSchema);
 
   const switchTo = useMutation({
     mutationFn: async (id: string) => {
-      qc.removeQueries({ queryKey: ["keys"] });
-      qc.removeQueries({ queryKey: ["key"] });
+      dropBrowsingCaches(qc);
       setConnected(await connect(id), id);
     },
   });
@@ -52,7 +66,35 @@ function Palette() {
   const options = useMemo(() => {
     const out: Option[] = [];
     const needle = text.trim().toLowerCase();
-    if (connected) {
+    if (isSql) {
+      const known = new Map(
+        tables.hits.map((h) => [`${h.schema}\u0000${h.table}`, h]),
+      );
+      const shown: [TableHit, string][] = needle
+        ? searchTables(tables.hits, needle).map((h) => [h, "Tables"])
+        : recentTables.map((r): [TableHit, string] => [
+            known.get(`${r.schema}\u0000${r.table}`) ?? {
+              ...r,
+              kind: "table",
+              estimatedRows: null,
+            },
+            "Recent",
+          ]);
+      for (const [h, group] of shown) {
+        out.push({
+          id: `t:${h.schema}\u0000${h.table}`,
+          group,
+          prefix: `${h.schema}.`,
+          label: h.table,
+          badge: h.kind === "table" ? undefined : h.kind,
+          hint: approxCompact(h.estimatedRows) || undefined,
+          run: () => {
+            openTable(h.schema, h.table);
+            close();
+          },
+        });
+      }
+    } else if (connected) {
       const names: [string, string][] = needle
         ? (found.data?.keys ?? []).map((n) => [n, "Keys"])
         : [
@@ -87,7 +129,18 @@ function Palette() {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text, connected, connectedId, recent, pins, found.data, profiles.data]);
+  }, [
+    text,
+    connected,
+    isSql,
+    connectedId,
+    recent,
+    pins,
+    recentTables,
+    tables.hits,
+    found.data,
+    profiles.data,
+  ]);
 
   const at = Math.min(active, Math.max(options.length - 1, 0));
   const onKey = (e: React.KeyboardEvent) => {
@@ -112,7 +165,13 @@ function Palette() {
       ?.scrollIntoView({ block: "nearest" });
   }, [at, base]);
 
-  const searching = connected && term !== "" && found.isFetching;
+  const placeholder = !connected
+    ? "Search connections"
+    : isSql
+      ? "Search tables and connections"
+      : "Search keys and connections";
+  const searching =
+    connected && term !== "" && (isSql ? tables.loading : found.isFetching);
   let lastGroup = "";
 
   return (
@@ -130,10 +189,8 @@ function Palette() {
           aria-expanded="true"
           aria-controls={`${base}-list`}
           aria-activedescendant={options[at] ? `${base}-${at}` : undefined}
-          aria-label="Search keys and connections"
-          placeholder={
-            connected ? "Search keys and connections" : "Search connections"
-          }
+          aria-label={placeholder}
+          placeholder={placeholder}
           value={text}
           onChange={(e) => {
             setText(e.target.value);
@@ -156,7 +213,11 @@ function Palette() {
                   onMouseMove={() => setActive(i)}
                   onClick={o.run}
                 >
-                  <span className="mono quick__label">{o.label}</span>
+                  <span className="mono quick__label">
+                    {o.prefix && <span className="muted">{o.prefix}</span>}
+                    {o.label}
+                  </span>
+                  {o.badge && <span className="badge">{o.badge}</span>}
                   {o.hint && <span className="muted mono">{o.hint}</span>}
                 </div>
               </div>
@@ -173,6 +234,11 @@ function Palette() {
           )}
           {searching && options.length > 0 && (
             <p className="note">Searching…</p>
+          )}
+          {isSql && tables.capped && text.trim() !== "" && (
+            <p className="note">
+              Only the first {QUICK_SCHEMAS} schemas are searched.
+            </p>
           )}
           {switchTo.error && (
             <div role="alert" className="alert">
