@@ -227,12 +227,29 @@ test.describe("browsing MySQL", () => {
     ).toBeVisible();
   });
 
-  test("Ctrl+K does nothing, because there are no keys to search", async ({
+  test("Ctrl+K opens table search, and Enter opens the table", async ({
     page,
   }) => {
     await openShop(page);
     await page.keyboard.press("Control+k");
-    await expect(page.locator(".quick")).toHaveCount(0);
+    const quick = page.getByRole("dialog", { name: "Quick open" });
+    const input = quick.getByRole("combobox");
+    await expect(input).toBeFocused();
+    await expect(input).toHaveAttribute(
+      "placeholder",
+      "Search tables and connections",
+    );
+    await input.fill("cust");
+    await expect(quick.getByRole("option")).toContainText([
+      "shop.customers",
+      "shop.paying_customers",
+    ]);
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    await expect(quick).toHaveCount(0);
+    await expect(
+      page.getByRole("table", { name: "Rows of paying_customers" }),
+    ).toBeVisible();
   });
 
   test("the Structure tab holds the engine and kind that used to be chips", async ({

@@ -33,6 +33,8 @@ import {
   isArrayType,
   parsePgArray,
   utcOf,
+  searchTables,
+  type TableHit,
 } from "./sql";
 
 const table = (name: string, rows: number | null = 1): TableInfo => ({
@@ -465,5 +467,43 @@ describe("utcOf", () => {
     expect(utcOf("2026-11-11 09:42:07+00")).toBeNull();
     expect(utcOf("2026-11-11 09:42:07")).toBeNull();
     expect(utcOf("nope")).toBeNull();
+  });
+});
+
+describe("searchTables", () => {
+  const hit = (schema: string, table: string): TableHit => ({
+    schema,
+    table,
+    kind: "table",
+    estimatedRows: 1,
+  });
+  const all = [
+    hit("public", "order_items"),
+    hit("public", "orders"),
+    hit("archive", "orders_2024"),
+    hit("billing", "invoices"),
+    hit("public", "customer_orders"),
+  ];
+  const names = (term: string) =>
+    searchTables(all, term).map((t) => `${t.schema}.${t.table}`);
+
+  it("finds nothing for empty text", () => {
+    expect(names("")).toEqual([]);
+    expect(names("   ")).toEqual([]);
+  });
+  it("puts names that start with the text first, then names that contain it", () => {
+    expect(names("ord")).toEqual([
+      "archive.orders_2024",
+      "public.order_items",
+      "public.orders",
+      "public.customer_orders",
+    ]);
+  });
+  it("ignores case and can narrow by schema", () => {
+    expect(names("ORDERS")).toContain("public.orders");
+    expect(names("billing.inv")).toEqual(["billing.invoices"]);
+  });
+  it("stops at the limit", () => {
+    expect(searchTables(all, "o", 2)).toHaveLength(2);
   });
 });

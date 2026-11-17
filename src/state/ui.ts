@@ -2,7 +2,15 @@ import { create } from "zustand";
 import type { ConnectionInfo } from "../api/types";
 import { loadRefresh, saveRefresh } from "../lib/refresh";
 import { loadPins, savePins, togglePin } from "../lib/pins";
-import { loadRecent, pushRecent, saveRecent } from "../lib/recent";
+import {
+  loadRecent,
+  loadRecentTables,
+  pushRecent,
+  pushRecentTable,
+  saveRecent,
+  saveRecentTables,
+  type RecentTable,
+} from "../lib/recent";
 import { loadSession, type Session } from "../lib/session";
 import { toggleColumnPin } from "../lib/sql";
 import { loadTheme, type Theme } from "../lib/theme";
@@ -17,6 +25,17 @@ function loadDelimiter(): string {
   } catch {
     return ":";
   }
+}
+
+/** Adds a just-opened table to this connection's recent list and saves it. */
+function rememberTable(
+  s: { connectedId: string | null; recentTables: RecentTable[] },
+  ref: RecentTable | null,
+): RecentTable[] {
+  if (!ref || !s.connectedId) return s.recentTables;
+  const next = pushRecentTable(s.recentTables, ref);
+  saveRecentTables(s.connectedId, next);
+  return next;
 }
 
 /** Adds a just-opened key to this connection's recent list and saves it. */
@@ -77,6 +96,9 @@ interface UiState {
   setSqlText: (text: string) => void;
   selectSchema: (schema: string | null) => void;
   selectTable: (table: string | null) => void;
+  /** Open a table of any schema, as quick open does. */
+  openTable: (schema: string, table: string) => void;
+  recentTables: RecentTable[];
   setSqlTab: (tab: SqlTab) => void;
   setSqlOffset: (offset: number) => void;
   /** Changing the filter or the sort goes back to the first page. */
@@ -147,13 +169,13 @@ export const useUi = create<UiState>((set) => ({
   connectedId: null,
   quickOpen: false,
   // Quick open searches keys, which a SQL connection doesn't have.
-  setQuickOpen: (quickOpen) =>
-    set((s) => ({ quickOpen: quickOpen && s.connected?.store !== "sql" })),
+  setQuickOpen: (quickOpen) => set({ quickOpen }),
   customTitleBar: null,
   setCustomTitleBar: (customTitleBar) => set({ customTitleBar }),
   about: false,
   setAbout: (about) => set({ about }),
   recent: [],
+  recentTables: [],
   pins: [],
   refreshEvery: loadRefresh(),
   setRefreshEvery: (refreshEvery) => {
@@ -217,7 +239,7 @@ export const useUi = create<UiState>((set) => ({
     }),
   // Picking a table, or going back up to the database, leaves the editor.
   selectTable: (sqlTable) =>
-    set({
+    set((s) => ({
       sqlTable,
       sqlTab: "data",
       sqlOffset: 0,
@@ -225,7 +247,23 @@ export const useUi = create<UiState>((set) => ({
       sqlSort: null,
       sqlPinned: [],
       sqlQueryOpen: false,
-    }),
+      recentTables:
+        sqlTable && s.sqlSchema
+          ? rememberTable(s, { schema: s.sqlSchema, table: sqlTable })
+          : s.recentTables,
+    })),
+  openTable: (schema, table) =>
+    set((s) => ({
+      sqlSchema: schema,
+      sqlTable: table,
+      sqlTab: "data",
+      sqlOffset: 0,
+      sqlFilter: "",
+      sqlSort: null,
+      sqlPinned: [],
+      sqlQueryOpen: false,
+      recentTables: rememberTable(s, { schema, table }),
+    })),
   setSqlTab: (sqlTab) => set({ sqlTab }),
   jsonView: "formatted",
   setJsonView: (jsonView) => set({ jsonView }),
@@ -247,6 +285,7 @@ export const useUi = create<UiState>((set) => ({
         connected,
         connectedId,
         recent: connectedId ? loadRecent(connectedId) : [],
+        recentTables: connectedId ? loadRecentTables(connectedId) : [],
         pins: connectedId ? loadPins(connectedId) : [],
         quickOpen: false,
         picking: false,
