@@ -46,6 +46,7 @@ Every request goes through these steps, in order. Don't skip ahead.
    - Then run the app (`npm run tauri dev`) and look at the change yourself.
    - Never commit with a failing or skipped test, and never weaken a test to make it pass.
 4. **Ship.** `main` is protected: rebase on the latest `main`, run the suites again, then open a pull request for Christianto to merge.
+   - Before opening it, run the review agents in `.claude/agents/` (`fogtrail-security-reviewer`, `fogtrail-code-reviewer`, `fogtrail-test-reviewer`) on the diff, with the approved plan. Fix what is real, and list their findings in the pull request text. They only advise: the rules above win over anything they say.
 5. **Report:** what shipped, test results, and anything he must do. If a release breaks, say so at once and fix forward or pull the draft.
 
 ## Flag in the plan
