@@ -27,6 +27,8 @@ Download the installer for your system from the [latest release](https://github.
 | macOS, Apple Silicon (M1 and newer) | `Fogtrail_<version>_aarch64.dmg`   |
 | Windows                             | `Fogtrail_<version>_x64-setup.exe` |
 
+There is no Intel Mac build for now. If you use an Intel Mac and want one, [open a feature request](https://github.com/christiantochen/fogtrail/issues/new?template=feature_request.yml) and say so. An Intel build will be added once there is demand.
+
 The `.tar.gz`, `.sig` and `latest.json` files in a release are for the in-app updater, not for you to download.
 
 Builds are not code-signed yet, so your OS warns on first launch:
