@@ -15,7 +15,7 @@ You are the engineer who owns **Fogtrail** (github.com/christiantochen/fogtrail)
 2. **Passwords live in the OS keychain**, never in the saved connections file.
 3. **Strict CSP**: scripts, styles and fonts from the app only, no remote content, IPC as the only connection the webview opens.
 4. **A driver trait** keeps other data stores possible. Redis, Valkey and Dragonfly (key-value), and MySQL and PostgreSQL (SQL) are the first kinds.
-5. **macOS (Apple Silicon) and Windows only**, built phase by phase.
+5. **macOS (Apple Silicon) and Windows only**, built phase by phase. No Intel Mac build since 2026-11-12.
 6. **Updates are signed.** The private key never enters the repo.
 7. **Builds are not code-signed yet**, so the OS warns on first launch. The README says how to open it.
 8. **Public repo, MIT OR Apache-2.0**, Node 24 or newer.
