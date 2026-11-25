@@ -19,8 +19,11 @@ const table = (page: Page, name: string) =>
 const rowCalls = (page: Page) =>
   page.evaluate(
     () =>
-      (window as unknown as { __rowCalls: { table: string; offset: number }[] })
-        .__rowCalls,
+      (
+        window as unknown as {
+          __rowCalls: { table: string; offset: number; count?: number }[];
+        }
+      ).__rowCalls,
   );
 
 test.describe("browsing MySQL", () => {
@@ -128,6 +131,78 @@ test.describe("browsing MySQL", () => {
     expect((await rowCalls(page)).map((c) => c.offset)).toEqual([
       0, 100, 200, 100,
     ]);
+  });
+
+  test("the page size can be 250 or 500, and the footer says when rows were read", async ({
+    page,
+  }) => {
+    await openShop(page);
+    await table(page, /^events/).click();
+    await expect(page.getByText("Rows 1–100")).toBeVisible();
+    await expect(page.getByText(/Updated \d\d:\d\d:\d\d/)).toBeVisible();
+    expect(await optionTexts(page, "Rows per page")).toEqual([
+      "100",
+      "250",
+      "500",
+    ]);
+    await choose(page, "Rows per page", "250");
+    await expect(page.getByText("Rows 1–250")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next 250" })).toBeDisabled();
+    expect((await rowCalls(page)).map((c) => c.count)).toEqual([100, 250]);
+  });
+
+  test("a new page size goes back to the first page and is kept per connection", async ({
+    page,
+  }) => {
+    await openShop(page);
+    await table(page, /^events/).click();
+    await page.getByRole("button", { name: "Next 100" }).click();
+    await expect(page.getByText("Rows 101–200")).toBeVisible();
+    await choose(page, "Rows per page", "250");
+    await expect(page.getByText("Rows 1–250")).toBeVisible();
+    // Another table, and back: the size is still 250.
+    await table(page, /^orders/).click();
+    await expect(page.getByText("Rows 1–3")).toBeVisible();
+    await table(page, /^events/).click();
+    await expect(page.getByText("Rows 1–250")).toBeVisible();
+    // It is saved under this connection's id, not for every connection.
+    const saved = await page.evaluate(() =>
+      Object.entries(localStorage).filter(([k]) =>
+        k.startsWith("fogtrail.pageSize."),
+      ),
+    );
+    expect(saved).toHaveLength(1);
+    expect(saved[0][0]).toMatch(/^fogtrail\.pageSize\.\S+$/);
+    expect(saved[0][1]).toBe("250");
+  });
+
+  test("the saved page size comes back when the connection is opened again", async ({
+    page,
+  }) => {
+    await openShop(page);
+    await table(page, /^events/).click();
+    await choose(page, "Rows per page", "250");
+    await expect(page.getByText("Rows 1–250")).toBeVisible();
+    // A restart reconnects on its own; the size comes back with the connection.
+    await page.reload();
+    await page.getByRole("list", { name: "Tables" }).waitFor();
+    await table(page, /^events/).click();
+    await expect(page.getByText("Rows 1–250")).toBeVisible();
+  });
+
+  test("the page size cannot change while rows are loading", async ({
+    page,
+  }) => {
+    await openShop(page);
+    await table(page, /^events/).click();
+    await expect(page.getByText("Rows 1–100")).toBeVisible();
+    await page.evaluate(() => {
+      (window as unknown as { __rowDelay: number }).__rowDelay = 1500;
+    });
+    await page.getByRole("button", { name: "Next 100" }).click();
+    await expect(box(page, "Rows per page")).toBeDisabled();
+    await expect(page.getByText("Rows 101–200")).toBeVisible();
+    await expect(box(page, "Rows per page")).toBeEnabled();
   });
 
   test("opening another table starts at its first page", async ({ page }) => {

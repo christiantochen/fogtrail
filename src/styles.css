@@ -1777,6 +1777,22 @@ tr.row--fresh td {
 .sqlfoot__spacer {
   flex: 1;
 }
+.sqlfoot__size {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  font-size: 12.5px;
+}
+.sqlfoot__size .dropdown__box {
+  height: 26px;
+  padding: 0 6px 0 2px;
+  font-weight: 500;
+}
 .chip--icon {
   display: inline-flex;
   align-items: center;

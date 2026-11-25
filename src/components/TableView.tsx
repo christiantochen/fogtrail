@@ -8,9 +8,9 @@ import type {
   TableStructure,
 } from "../api/types";
 import { copyText } from "../lib/clipboard";
+import { clockLabel, PAGE_SIZES } from "../lib/pageSize";
 import { refreshAll } from "../lib/refreshAll";
 import {
-  ROWS_PER_PAGE,
   columnSub,
   isArrayType,
   isJsonType,
@@ -28,6 +28,7 @@ import {
   pinOrder,
 } from "../lib/sql";
 import { useUi, type SqlTab } from "../state/ui";
+import { Dropdown } from "./Dropdown";
 import { FilterBar } from "./FilterBar";
 import { PinButton } from "./PinButton";
 import { useColumnPins } from "./useColumnPins";
@@ -95,9 +96,6 @@ export function TableView({
               </button>
             ))}
           </div>
-          <span className="muted">
-            {tab === "data" ? `${ROWS_PER_PAGE} rows per page` : null}
-          </span>
         </div>
         {tab === "data" ? (
           <Data schema={schema} table={table} columns={s?.columns} />
@@ -132,7 +130,9 @@ function Data({
     ...(filter !== "" ? { filter } : {}),
     ...(sort ? { sortColumn: sort.column, sortDesc: sort.desc } : {}),
   };
-  const q = useRows(schema, table, offset, view);
+  const pageSize = useUi((s) => s.pageSize);
+  const setPageSize = useUi((s) => s.setPageSize);
+  const q = useRows(schema, table, offset, view, pageSize);
 
   const qc = useQueryClient();
   // While a new page, sort or filter loads, the old rows stay (so the table never blanks),
@@ -195,7 +195,7 @@ function Data({
       {bar}
       {/* A new page, filter or sort starts with no row open. */}
       <DataGrid
-        key={`${offset}|${filter}|${sort?.column}|${sort?.desc}`}
+        key={`${offset}|${pageSize}|${filter}|${sort?.column}|${sort?.desc}`}
         schema={schema}
         table={table}
         page={page}
@@ -204,6 +204,9 @@ function Data({
         sort={sort}
         onSort={setSort}
         offset={offset}
+        pageSize={pageSize}
+        onPageSize={setPageSize}
+        updatedAt={q.dataUpdatedAt}
         fetching={q.isFetching}
         stale={stale}
         loading={loading}
@@ -222,6 +225,9 @@ function DataGrid({
   sort,
   onSort,
   offset,
+  pageSize,
+  onPageSize,
+  updatedAt,
   fetching,
   stale,
   loading,
@@ -235,6 +241,10 @@ function DataGrid({
   sort: { column: string; desc: boolean } | null;
   onSort: (sort: { column: string; desc: boolean } | null) => void;
   offset: number;
+  pageSize: number;
+  onPageSize: (size: number) => void;
+  /** When the rows on screen were read, in ms. */
+  updatedAt: number;
   fetching: boolean;
   /** These rows belong to the previous page, sort or filter. */
   stale: boolean;
@@ -429,12 +439,25 @@ function DataGrid({
               </>
             )}
           </span>
+          {!loading && updatedAt > 0 && (
+            <span className="muted">· Updated {clockLabel(updatedAt)}</span>
+          )}
           {live.length >= MAX_PINS && (
             <span className="sqlfoot__note">
               {MAX_PINS} of {MAX_PINS} columns pinned. Unpin one to pin another.
             </span>
           )}
           <span className="sqlfoot__spacer" />
+          <span className="sqlfoot__size">
+            <span className="muted">Rows</span>
+            <Dropdown
+              label="Rows per page"
+              value={pageSize}
+              onChange={onPageSize}
+              disabled={fetching}
+              options={PAGE_SIZES.map((n) => ({ value: n, label: String(n) }))}
+            />
+          </span>
           <button
             type="button"
             className="btn btn--small"
@@ -449,7 +472,7 @@ function DataGrid({
             type="button"
             className="btn btn--small"
             disabled={offset === 0 || fetching}
-            onClick={() => onOffset(offset - ROWS_PER_PAGE)}
+            onClick={() => onOffset(Math.max(0, offset - pageSize))}
           >
             Previous
           </button>
@@ -457,9 +480,9 @@ function DataGrid({
             type="button"
             className="btn btn--small"
             disabled={!page.hasMore || fetching}
-            onClick={() => onOffset(offset + ROWS_PER_PAGE)}
+            onClick={() => onOffset(offset + pageSize)}
           >
-            Next {ROWS_PER_PAGE}
+            Next {pageSize}
           </button>
         </div>
       </div>

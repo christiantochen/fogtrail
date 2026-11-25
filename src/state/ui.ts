@@ -1,6 +1,12 @@
 import { create } from "zustand";
 import type { ConnectionInfo } from "../api/types";
 import { loadRefresh, saveRefresh } from "../lib/refresh";
+import {
+  DEFAULT_PAGE_SIZE,
+  loadPageSize,
+  savePageSize,
+  validPageSize,
+} from "../lib/pageSize";
 import { loadPins, savePins, togglePin } from "../lib/pins";
 import {
   loadRecent,
@@ -82,6 +88,9 @@ interface UiState {
   setJsonView: (view: "formatted" | "raw") => void;
   /** Rows skipped before the page on screen. */
   sqlOffset: number;
+  /** Rows asked for per page. Remembered per connection. */
+  pageSize: number;
+  setPageSize: (size: number) => void;
   /** A SQL expression narrowing the rows on screen (the part after WHERE). */
   sqlFilter: string;
   /** The column the rows are sorted by, or null for the table's own order. */
@@ -224,6 +233,14 @@ export const useUi = create<UiState>((set) => ({
   setTheme: (theme) => set({ theme }),
   sqlTab: "data",
   sqlOffset: 0,
+  pageSize: DEFAULT_PAGE_SIZE,
+  // A new size starts again from the first page.
+  setPageSize: (size) =>
+    set((s) => {
+      const pageSize = validPageSize(size);
+      if (s.connectedId) savePageSize(s.connectedId, pageSize);
+      return { pageSize, sqlOffset: 0 };
+    }),
   sqlFilter: "",
   sqlSort: null,
   sqlPinned: [],
@@ -291,6 +308,7 @@ export const useUi = create<UiState>((set) => ({
         connectedId,
         recent: connectedId ? loadRecent(connectedId) : [],
         recentTables: connectedId ? loadRecentTables(connectedId) : [],
+        pageSize: connectedId ? loadPageSize(connectedId) : DEFAULT_PAGE_SIZE,
         pins: connectedId ? loadPins(connectedId) : [],
         quickOpen: false,
         picking: false,

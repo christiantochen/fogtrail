@@ -12,9 +12,6 @@ export type SqlDialect = "mysql" | "postgres";
 export const sqlDialectOf = (driver: string | undefined): SqlDialect =>
   driver?.startsWith("PostgreSQL") ? "postgres" : "mysql";
 
-/** Rows per page the backend sends by default. */
-export const ROWS_PER_PAGE = 100;
-
 /** Row counts are estimates from the server, so they always carry a `~`. */
 export function approxRows(n: number | null): string {
   return n === null ? "" : `~${n.toLocaleString("en-US")}`;
