@@ -205,6 +205,27 @@ test.describe("browsing MySQL", () => {
     await expect(box(page, "Rows per page")).toBeEnabled();
   });
 
+  test("after Cancel the rows from before cannot be paged from", async ({
+    page,
+  }) => {
+    await openShop(page);
+    await table(page, /^events/).click();
+    await page.getByRole("button", { name: "Next 100" }).click();
+    await expect(page.getByText("Rows 101–200")).toBeVisible();
+    // Before: both page buttons work on this page.
+    await expect(page.getByRole("button", { name: "Next 100" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Previous" })).toBeEnabled();
+    await page.evaluate(() => {
+      (window as unknown as { __rowDelay: number }).__rowDelay = 3000;
+    });
+    await page.locator('thead th[data-col="kind"] .sorthead').click();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByText(/^Cancelled/)).toBeVisible();
+    // The rows on screen are not the page the buttons would move from.
+    await expect(page.getByRole("button", { name: "Next 100" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Previous" })).toBeDisabled();
+  });
+
   test("opening another table starts at its first page", async ({ page }) => {
     await openShop(page);
     await table(page, /^events/).click();

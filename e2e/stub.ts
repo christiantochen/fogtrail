@@ -563,6 +563,7 @@ export async function stubBackend(
                 table: string;
                 offset: number;
                 count?: number;
+                runId?: string;
                 view?: {
                   filter?: string;
                   sortColumn?: string;
@@ -575,19 +576,22 @@ export async function stubBackend(
                   table: string;
                   offset: number;
                   count?: number;
+                  runId?: string;
                 }[];
                 __rowViews?: unknown[];
                 __FAIL_ROWS__?: boolean;
                 __pg?: boolean;
               };
-              // A test can make reads slow, to look at the loading state.
-              if (w.__rowDelay)
-                await new Promise((r) => setTimeout(r, w.__rowDelay));
+              // Recorded when the read starts, so a test can see one that is still running.
               (w.__rowCalls ??= []).push({
                 table: a.table,
                 offset: a.offset,
                 count: a.count,
+                runId: a.runId,
               });
+              // A test can make reads slow, to look at the loading state.
+              if (w.__rowDelay)
+                await new Promise((r) => setTimeout(r, w.__rowDelay));
               (w.__rowViews ??= []).push(a.view ?? {});
               if (w.__FAIL_ROWS__)
                 throw { kind: "sql", message: "SELECT command denied to user" };

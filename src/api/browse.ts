@@ -75,7 +75,9 @@ export const tableRows = (
   offset: number,
   view?: RowView,
   count?: number,
-) => call<RowPage>("table_rows", { schema, table, offset, view, count });
+  /** Lets `cancelQuery` stop this read while it runs. */
+  runId?: string,
+) => call<RowPage>("table_rows", { schema, table, offset, view, count, runId });
 
 /** Runs one read-only statement. `runId` lets `cancelQuery` stop it. */
 export const runQuery = (sql: string, schema: string | null, runId: string) =>

@@ -10,6 +10,7 @@ import { sqlDialectOf, type TableHit } from "../lib/sql";
 import { globFor } from "../lib/tree";
 import { useUi } from "../state/ui";
 import {
+  cancelQuery,
   getKey,
   listProfiles,
   listSchemas,
@@ -180,7 +181,20 @@ export const useStructure = (schema: string, table: string) =>
     staleTime: 0,
   });
 
-/** One page of rows. The previous page stays on screen while the next one loads. */
+/** The cache key of one page of rows. */
+export const rowsKey = (
+  schema: string,
+  table: string,
+  offset: number,
+  view: RowView,
+  count: number,
+) => ["rows", schema, table, offset, view, count] as const;
+
+/**
+ * One page of rows. The previous page stays on screen while the next one loads.
+ * When the read is cancelled, or nobody is looking at it any more, the server is
+ * told to stop it, so a slow sort does not keep running for nothing.
+ */
 export const useRows = (
   schema: string,
   table: string,
@@ -189,8 +203,14 @@ export const useRows = (
   count: number,
 ) =>
   useQuery({
-    queryKey: ["rows", schema, table, offset, view, count],
-    queryFn: () => tableRows(schema, table, offset, view, count),
+    queryKey: rowsKey(schema, table, offset, view, count),
+    queryFn: ({ signal }) => {
+      const runId = `rows-ui-${crypto.randomUUID()}`;
+      signal.addEventListener("abort", () => {
+        void cancelQuery(runId).catch(() => {});
+      });
+      return tableRows(schema, table, offset, view, count, runId);
+    },
     retry: false,
     staleTime: 0,
     placeholderData: keepPreviousData,

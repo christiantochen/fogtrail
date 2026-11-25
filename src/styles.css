@@ -1777,6 +1777,9 @@ tr.row--fresh td {
 .sqlfoot__spacer {
   flex: 1;
 }
+.btn--attention {
+  border-color: var(--amber);
+}
 .sqlfoot__size {
   display: inline-flex;
   align-items: center;
