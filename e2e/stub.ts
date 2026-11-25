@@ -562,6 +562,7 @@ export async function stubBackend(
               const a = args as unknown as {
                 table: string;
                 offset: number;
+                count?: number;
                 view?: {
                   filter?: string;
                   sortColumn?: string;
@@ -570,7 +571,11 @@ export async function stubBackend(
               };
               const w = window as unknown as {
                 __rowDelay?: number;
-                __rowCalls?: { table: string; offset: number }[];
+                __rowCalls?: {
+                  table: string;
+                  offset: number;
+                  count?: number;
+                }[];
                 __rowViews?: unknown[];
                 __FAIL_ROWS__?: boolean;
                 __pg?: boolean;
@@ -578,7 +583,11 @@ export async function stubBackend(
               // A test can make reads slow, to look at the loading state.
               if (w.__rowDelay)
                 await new Promise((r) => setTimeout(r, w.__rowDelay));
-              (w.__rowCalls ??= []).push({ table: a.table, offset: a.offset });
+              (w.__rowCalls ??= []).push({
+                table: a.table,
+                offset: a.offset,
+                count: a.count,
+              });
               (w.__rowViews ??= []).push(a.view ?? {});
               if (w.__FAIL_ROWS__)
                 throw { kind: "sql", message: "SELECT command denied to user" };
@@ -755,9 +764,12 @@ export async function stubBackend(
                   hasMore: false,
                 };
               }
-              // `events` is long enough to page: 250 rows, 100 per page.
+              // `events` is long enough to page: 250 rows, 100 per page unless asked otherwise.
               const total = a.table === "events" ? 250 : 0;
-              const shown = Math.max(0, Math.min(100, total - a.offset));
+              const shown = Math.max(
+                0,
+                Math.min(a.count ?? 100, total - a.offset),
+              );
               return {
                 columns: [
                   { name: "id", typeName: "BIGINT" },

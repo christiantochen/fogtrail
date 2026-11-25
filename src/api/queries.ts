@@ -186,10 +186,11 @@ export const useRows = (
   table: string,
   offset: number,
   view: RowView,
+  count: number,
 ) =>
   useQuery({
-    queryKey: ["rows", schema, table, offset, view],
-    queryFn: () => tableRows(schema, table, offset, view),
+    queryKey: ["rows", schema, table, offset, view, count],
+    queryFn: () => tableRows(schema, table, offset, view, count),
     retry: false,
     staleTime: 0,
     placeholderData: keepPreviousData,
