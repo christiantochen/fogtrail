@@ -546,6 +546,31 @@ export async function stubBackend(
                     },
                   ],
                 };
+              if (t === "customers")
+                return {
+                  kind: "table",
+                  engine: "InnoDB",
+                  comment: null,
+                  columns: [
+                    col("id", "bigint unsigned", { key: "PRI" }),
+                    col("name", "varchar(80)"),
+                    col("referred_by", "bigint unsigned", {
+                      key: "MUL",
+                      nullable: true,
+                    }),
+                  ],
+                  indexes: [],
+                  // A key into its own table: a customer was referred by another one.
+                  foreignKeys: [
+                    {
+                      name: "fk_customers_referrer",
+                      columns: ["referred_by"],
+                      refSchema: "shop",
+                      refTable: "customers",
+                      refColumns: ["id"],
+                    },
+                  ],
+                };
               return {
                 kind: t === "paying_customers" ? "view" : "table",
                 engine: t === "paying_customers" ? null : "InnoDB",
@@ -764,6 +789,25 @@ export async function stubBackend(
                 return {
                   columns: names.map((name) => ({ name, typeName: "VARCHAR" })),
                   rows: [names.map(value)],
+                  offset: 0,
+                  hasMore: false,
+                };
+              }
+              if (a.table === "customers") {
+                const all = [
+                  ["9021", "Example Customer One", null],
+                  ["4417", "Example Customer Two", "9021"],
+                  ["7730", "Example Customer Three", "4417"],
+                ];
+                // The filter a followed foreign key sends: "`id` = 9021" or '"id" = 9021'.
+                const want = /[`"]id[`"]\s*=\s*(\d+)/.exec(filter)?.[1];
+                return {
+                  columns: [
+                    { name: "id", typeName: "BIGINT" },
+                    { name: "name", typeName: "VARCHAR" },
+                    { name: "referred_by", typeName: "BIGINT" },
+                  ],
+                  rows: want ? all.filter((r) => r[0] === want) : all,
                   offset: 0,
                   hasMore: false,
                 };

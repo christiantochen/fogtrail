@@ -1,8 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { rowsKey, useRows, useStructure } from "../api/queries";
 import type {
   ColumnInfo,
+  ForeignKeyInfo,
+  ResultColumn,
   RowPage,
   RowView,
   TableStructure,
@@ -30,6 +32,8 @@ import {
 import { useUi, type SqlTab } from "../state/ui";
 import { Dropdown } from "./Dropdown";
 import { FilterBar } from "./FilterBar";
+import { useForeignKeys, type FkLink } from "./useForeignKeys";
+import { ArrowLeftIcon } from "./Icons";
 import { PinButton } from "./PinButton";
 import { useColumnPins } from "./useColumnPins";
 import { useDelayedFlag } from "./useDelayedFlag";
@@ -98,7 +102,12 @@ export function TableView({
           </div>
         </div>
         {tab === "data" ? (
-          <Data schema={schema} table={table} columns={s?.columns} />
+          <Data
+            schema={schema}
+            table={table}
+            columns={s?.columns}
+            foreignKeys={s?.foreignKeys}
+          />
         ) : s && tab === "indexes" ? (
           <Indexes s={s} />
         ) : s ? (
@@ -115,10 +124,12 @@ function Data({
   schema,
   table,
   columns,
+  foreignKeys,
 }: {
   schema: string;
   table: string;
   columns: ColumnInfo[] | undefined;
+  foreignKeys: ForeignKeyInfo[] | undefined;
 }) {
   const offset = useUi((s) => s.sqlOffset);
   const setOffset = useUi((s) => s.setSqlOffset);
@@ -134,6 +145,9 @@ function Data({
   const setPageSize = useUi((s) => s.setPageSize);
   const q = useRows(schema, table, offset, view, pageSize);
 
+  const back = useUi((s) => s.sqlBack);
+  const goBack = useUi((s) => s.goBack);
+  const linkFor = useForeignKeys(schema, foreignKeys);
   const qc = useQueryClient();
   // While a new page, sort or filter loads, the old rows stay (so the table never blanks),
   // and they are "stale": they can't be opened or copied. The look of loading waits 200 ms.
@@ -146,13 +160,26 @@ function Data({
       queryKey: rowsKey(schema, table, offset, view, pageSize),
     });
   const bar = (
-    <FilterBar
-      key={table}
-      applied={filter}
-      onApply={setFilter}
-      onRefresh={() => refreshAll(qc)}
-      refreshing={q.isFetching}
-    />
+    <>
+      {back && (
+        <div className="backbar">
+          <button
+            type="button"
+            className="btn btn--small btn--attention"
+            onClick={goBack}
+          >
+            <ArrowLeftIcon /> Back to {back.table}
+          </button>
+        </div>
+      )}
+      <FilterBar
+        key={`${table}|${back?.seq ?? 0}`}
+        applied={filter}
+        onApply={setFilter}
+        onRefresh={() => refreshAll(qc)}
+        refreshing={q.isFetching}
+      />
+    </>
   );
 
   if (q.isError) {
@@ -220,6 +247,7 @@ function Data({
         onCancel={onCancel}
         onRetry={() => void q.refetch()}
         onOffset={setOffset}
+        linkFor={linkFor}
       />
     </>
   );
@@ -244,6 +272,7 @@ function DataGrid({
   onCancel,
   onRetry,
   onOffset,
+  linkFor,
 }: {
   schema: string;
   table: string;
@@ -267,8 +296,25 @@ function DataGrid({
   onCancel: () => void;
   onRetry: () => void;
   onOffset: (offset: number) => void;
+  /** Where a foreign-key value leads, if it does. */
+  linkFor: (
+    columns: readonly ResultColumn[],
+    row: readonly (string | null)[],
+    column: string,
+  ) => FkLink | null;
 }) {
   const [open, setOpen] = useState<number | null>(null);
+  // After a jump along a key, the row that was found opens on its own, once.
+  const landed = useUi((s) => s.sqlLanded);
+  const clearLanded = useUi((s) => s.clearLanded);
+  const [landedSeen, setLandedSeen] = useState(false);
+  if (landed && !stale && !landedSeen) {
+    setLandedSeen(true);
+    if (page.rows.length > 0) setOpen(0);
+  }
+  useEffect(() => {
+    if (landed && !stale) clearLanded();
+  }, [landed, stale, clearLanded]);
   // The row dialog: on the whole row (json null) or on one column's JSON.
   const [dialog, setDialog] = useState<{ json: number | null } | null>(null);
   const pinned = useUi((s) => s.sqlPinned);
@@ -422,6 +468,11 @@ function DataGrid({
                       type={page.columns[i].typeName}
                       pin={pinOf(page.columns[i].name)}
                       name={page.columns[i].name}
+                      link={
+                        stale
+                          ? null
+                          : linkFor(page.columns, row, page.columns[i].name)
+                      }
                       onOpenJson={() => {
                         if (stale) return;
                         setOpen(r);
@@ -546,6 +597,7 @@ function DataGrid({
           json={dialog.json}
           onMove={move}
           onJson={(json) => setDialog({ json })}
+          link={(column) => linkFor(page.columns, page.rows[open], column)}
           onClose={() => setDialog(null)}
         />
       )}
@@ -559,6 +611,7 @@ function Cell({
   type,
   pin,
   name,
+  link,
   onOpenJson,
 }: {
   value: string | null;
@@ -566,6 +619,8 @@ function Cell({
   pin?: { left: number; last: boolean };
   /** The column's name, for the JSON chip's label. */
   name: string;
+  /** Where this value leads, when its column is a foreign key. */
+  link: FkLink | null;
   /** Open the row dialog on this value. */
   onOpenJson: () => void;
 }) {
@@ -619,9 +674,28 @@ function Cell({
     <td
       className={cls(numeric ? "num" : undefined)}
       style={stick?.style}
-      title={value}
+      title={link ? `${value} → ${link.label}` : value}
     >
-      {value}
+      {link ? (
+        <button
+          type="button"
+          className="fklink"
+          aria-label={`${name} ${value}, open ${link.label}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            link.follow();
+          }}
+          // Enter and Space on the link follow it, not open the row around it. Other keys
+          // (arrows, shortcuts) still reach the row and the window.
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+          }}
+        >
+          {value}
+        </button>
+      ) : (
+        value
+      )}
     </td>
   );
 }

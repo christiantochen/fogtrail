@@ -3216,3 +3216,45 @@ button.jchip--open:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+/* Following a foreign key: the value in a cell is a link, with a chip in the row dialog. */
+.fklink {
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dotted var(--muted);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.fklink:hover {
+  border-bottom-style: solid;
+  color: var(--ink);
+}
+
+.fklink:focus-visible,
+.fkchip:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+.fkchip {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--chip);
+  color: var(--chip-ink);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.fkchip:hover {
+  border-color: var(--ink);
+}
+
+.backbar {
+  display: flex;
+  padding: 8px 16px 0;
+}

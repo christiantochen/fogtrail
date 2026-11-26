@@ -18,6 +18,7 @@ import {
   utcOf,
 } from "../lib/sql";
 import { Marked } from "./Marked";
+import type { FkLink } from "./useForeignKeys";
 import { JsonSection } from "./JsonSection";
 import { Chevron, CopyIcon, FolderIcon, Lock, Pin } from "./Icons";
 
@@ -177,6 +178,8 @@ export interface DialogOptions {
   onHideNull: (hide: boolean) => void;
   /** What the structure says about each column, by name. */
   info: Map<string, ColumnInfo>;
+  /** Where this row's value in a column leads, when the column is a foreign key. */
+  link?: (column: string) => FkLink | null;
   /** Pinned column names, in the order they were pinned. */
   pinned: string[];
   onPin: (name: string) => void;
@@ -323,6 +326,7 @@ function DialogList({
         />
       );
     const text = row[i] as string;
+    const fk = o.link?.(columns[i].name) ?? null;
     // A time with an offset also says what it is in UTC.
     const utc = isTimeType(columns[i].typeName) ? utcOf(text) : null;
     const marked = (
@@ -353,6 +357,17 @@ function DialogList({
           <span className="mono">{marked}</span>
         )}
         {utc && <span className="rowfields__utc mono">= {utc}</span>}
+        {fk && (
+          <button
+            type="button"
+            className="fkchip mono"
+            title={`Open ${fk.label}`}
+            aria-label={`Open ${fk.label}`}
+            onClick={fk.follow}
+          >
+            → {fk.label}
+          </button>
+        )}
       </>
     );
   };

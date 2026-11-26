@@ -22,6 +22,7 @@ import { ArrowLeftIcon } from "./Icons";
 import { Marked } from "./Marked";
 import { RowBody } from "./RowBody";
 import { useEscape } from "./useEscape";
+import type { FkLink } from "./useForeignKeys";
 import { useJsonFold, useRevealHit } from "./useJsonFold";
 
 const FOCUSABLE =
@@ -43,6 +44,7 @@ export function RowDialog({
   json,
   onMove,
   onJson,
+  link,
   onClose,
 }: {
   schema: string;
@@ -58,6 +60,8 @@ export function RowDialog({
   onMove: (delta: number) => void;
   /** Show one JSON value on its own, or null to go back to the whole row. */
   onJson: (column: number | null) => void;
+  /** Where this row's value in a column leads, when the column is a foreign key. */
+  link?: (column: string) => FkLink | null;
   onClose: () => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -386,6 +390,7 @@ export function RowDialog({
                 hideNull,
                 onHideNull: setHideNull,
                 info,
+                link,
                 pinned,
                 onPin: togglePinned,
                 kind,

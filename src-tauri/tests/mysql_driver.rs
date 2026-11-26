@@ -822,3 +822,43 @@ async fn unqualified_names_use_the_schema_that_was_asked_for() {
     // The next run on the same pool is unaffected.
     assert!(d.run_query("SELECT 1", Some("shop"), "t").await.is_ok());
 }
+
+/// The conditions the screen builds when a foreign key is followed. A literal that is read
+/// wrongly would fail to parse or compare unequal, so each is checked against the same text
+/// built from character codes: the filter keeps all 4 rows only when the literal means it.
+#[tokio::test]
+async fn a_followed_foreign_key_filter_is_accepted_and_matches() {
+    let d = driver_or_skip!();
+    let count = |f: &'static str| {
+        let d = &d;
+        async move {
+            d.table_rows("shop", "customers", 0, 100, &filtered(f), "fk-test")
+                .await
+                .unwrap()
+                .rows
+                .len()
+        }
+    };
+    assert_eq!(count("`id` = 1").await, 1);
+    // A text key is quoted, even when it looks like a number.
+    assert_eq!(count("`id` = '1'").await, 1);
+    assert_eq!(count("`name` = 'Ada'").await, 1);
+    assert_eq!(count("`id` = 1 AND `name` = 'Ada'").await, 1);
+    // "Ada" as hex, the way text with a backslash is sent.
+    assert_eq!(count("`name` = CONVERT(X'416461' USING utf8mb4)").await, 1);
+    // A doubled quote is one quote.
+    assert_eq!(count("'O''Neil' = CONCAT('O', CHAR(39), 'Neil')").await, 4);
+    assert_eq!(count("'O''Neil' = 'ONeil'").await, 0);
+    // A backslash as hex is one backslash, and no escape of what follows.
+    assert_eq!(
+        count("CONVERT(X'5c61' USING utf8mb4) = CONCAT(CHAR(92), 'a')").await,
+        4
+    );
+    assert_eq!(count("CONVERT(X'5c61' USING utf8mb4) = 'a'").await, 0);
+    // A value that looks like a second statement is only text, and the guard lets it through.
+    assert_eq!(
+        count("'''; DROP TABLE customers; --' = CONCAT(CHAR(39), '; DROP TABLE customers; --')")
+            .await,
+        4
+    );
+}

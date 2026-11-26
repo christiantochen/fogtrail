@@ -875,3 +875,51 @@ async fn a_saved_postgres_profile_connects_and_browses() {
     ));
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// The conditions the screen builds when a foreign key is followed. A literal that is read
+/// wrongly would fail to parse or compare unequal, so each is checked against the same text
+/// built from character codes: the filter keeps all 4 rows only when the literal means it.
+#[tokio::test]
+async fn a_followed_foreign_key_filter_is_accepted_and_matches() {
+    let d = driver_or_skip!();
+    let count = |f: &'static str| {
+        let d = &d;
+        async move {
+            d.table_rows("public", "customers", 0, 100, &filtered(f), "fk-test")
+                .await
+                .unwrap()
+                .rows
+                .len()
+        }
+    };
+    assert_eq!(count("\"id\" = 1").await, 1);
+    // A text key is quoted, even when it looks like a number.
+    assert_eq!(count("\"id\" = '1'").await, 1);
+    assert_eq!(count("\"name\" = 'Ada'").await, 1);
+    assert_eq!(count("\"id\" = 1 AND \"name\" = 'Ada'").await, 1);
+    assert_eq!(count("'O''Neil' = 'O' || chr(39) || 'Neil'").await, 4);
+    assert_eq!(count("'O''Neil' = 'ONeil'").await, 0);
+    // A backslash in an escape string is one backslash, whatever else is set.
+    assert_eq!(count("E'a\\\\b' = 'a' || chr(92) || 'b'").await, 4);
+    assert_eq!(count("E'a\\\\b' = 'ab'").await, 0);
+    assert_eq!(
+        count("E'\\\\''); COMMIT; --' = chr(92) || chr(39) || '); COMMIT; --'").await,
+        4
+    );
+}
+
+/// A role or database can turn standard_conforming_strings off. The session puts it back on,
+/// so the guard and the server read a backslash in a quoted text the same way.
+#[tokio::test]
+async fn the_session_reads_backslashes_in_plain_strings_as_plain() {
+    let Some(url) = url() else { return };
+    let pool = postgres::pool_options()
+        .connect_with(opts(&url).options([("standard_conforming_strings", "off")]))
+        .await
+        .unwrap();
+    let v: String = sqlx::query_scalar("SHOW standard_conforming_strings")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(v, "on");
+}

@@ -61,6 +61,10 @@ fn pool_options_with(query_seconds: u64) -> PgPoolOptions {
                     .await?;
                 let timeout = format!("SET statement_timeout = {}", query_seconds * 1000);
                 conn.execute(timeout.as_str()).await?;
+                // A role or database may switch this off. Then a backslash in a quoted
+                // text would escape, and the guard (which reads it as plain) and the
+                // server would disagree about where a string ends.
+                conn.execute("SET standard_conforming_strings = on").await?;
                 // Shows up in pg_stat_activity, so an admin can see who is reading.
                 conn.execute("SET application_name = 'Fogtrail'").await?;
                 Ok(())
