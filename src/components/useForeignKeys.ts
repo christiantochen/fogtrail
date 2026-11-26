@@ -18,6 +18,8 @@ export interface FkLink {
 export function useForeignKeys(
   schema: string,
   foreignKeys: readonly ForeignKeyInfo[] | undefined,
+  /** Columns the person hid: a key with one of them has no link, so its value stays off screen. */
+  hidden: readonly string[] = [],
 ): (
   columns: readonly ResultColumn[],
   row: readonly (string | null)[],
@@ -29,7 +31,7 @@ export function useForeignKeys(
     (columns, row, column) => {
       if (!foreignKeys || foreignKeys.length === 0) return null;
       const fk = fkFor(foreignKeys, column);
-      if (!fk) return null;
+      if (!fk || fk.columns.some((c) => hidden.includes(c))) return null;
       const filter = fkFilter(dialect, fk, columns, row);
       if (filter === null) return null;
       return {
@@ -37,6 +39,6 @@ export function useForeignKeys(
         follow: () => follow(fk.refSchema, fk.refTable, filter),
       };
     },
-    [dialect, follow, foreignKeys, schema],
+    [dialect, follow, foreignKeys, hidden, schema],
   );
 }

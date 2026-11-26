@@ -45,6 +45,7 @@ export function RowDialog({
   onMove,
   onJson,
   link,
+  hiddenCount = 0,
   onClose,
 }: {
   schema: string;
@@ -62,6 +63,8 @@ export function RowDialog({
   onJson: (column: number | null) => void;
   /** Where this row's value in a column leads, when the column is a foreign key. */
   link?: (column: string) => FkLink | null;
+  /** Columns the Columns menu leaves out, which this dialog does not show. */
+  hiddenCount?: number;
   onClose: () => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -311,6 +314,7 @@ export function RowDialog({
               <div className="rowpanel__title">
                 <span className="rowpanel__label">
                   {schema}.{table} · {label} · {columns.length} columns
+                  {hiddenCount > 0 ? ` · ${hiddenCount} hidden` : ""}
                 </span>
                 <span className="rowpanel__name mono">{title}</span>
               </div>
