@@ -1,10 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { rowsKey, useRows, useStructure } from "../api/queries";
 import type {
   ColumnInfo,
   ForeignKeyInfo,
-  ResultColumn,
   RowPage,
   RowView,
   TableStructure,
@@ -34,6 +33,13 @@ import { Dropdown } from "./Dropdown";
 import { FilterBar } from "./FilterBar";
 import { useForeignKeys, type FkLink } from "./useForeignKeys";
 import { ArrowLeftIcon } from "./Icons";
+import { ColumnsMenu } from "./ColumnsMenu";
+import {
+  liveHidden,
+  loadHidden,
+  saveHidden,
+  shownIndexes,
+} from "../lib/hiddenColumns";
 import { PinButton } from "./PinButton";
 import { useColumnPins } from "./useColumnPins";
 import { useDelayedFlag } from "./useDelayedFlag";
@@ -145,9 +151,40 @@ function Data({
   const setPageSize = useUi((s) => s.setPageSize);
   const q = useRows(schema, table, offset, view, pageSize);
 
+  const profileId = useUi((s) => s.connectedId) ?? "";
+  const pinnedNames = useUi((s) => s.sqlPinned);
+  // Columns hidden here are kept for this table on this connection. The rows are read in full;
+  // hiding only leaves them out of the grid, the panels and what is copied.
+  const [hiddenRaw, setHiddenRaw] = useState(() =>
+    loadHidden(profileId, schema, table),
+  );
+  const setHidden = (next: string[]) => {
+    setHiddenRaw(next);
+    saveHidden(profileId, schema, table, next);
+    // A sort by a column that is no longer shown would be invisible, so it ends here.
+    if (sort && next.includes(sort.column)) setSort(null);
+  };
+  const fullPage = q.data;
+  const hidden = fullPage
+    ? liveHidden(
+        hiddenRaw,
+        fullPage.columns.map((c) => c.name),
+      )
+    : hiddenRaw;
+  const shownPage = useMemo(() => {
+    if (!fullPage) return undefined;
+    const names = fullPage.columns.map((c) => c.name);
+    const keep = shownIndexes(names, liveHidden(hiddenRaw, names));
+    if (keep.length === names.length) return fullPage;
+    return {
+      ...fullPage,
+      columns: keep.map((i) => fullPage.columns[i]),
+      rows: fullPage.rows.map((row) => keep.map((i) => row[i])),
+    };
+  }, [fullPage, hiddenRaw]);
   const back = useUi((s) => s.sqlBack);
   const goBack = useUi((s) => s.goBack);
-  const linkFor = useForeignKeys(schema, foreignKeys);
+  const linkFor = useForeignKeys(schema, foreignKeys, hidden);
   const qc = useQueryClient();
   // While a new page, sort or filter loads, the old rows stay (so the table never blanks),
   // and they are "stale": they can't be opened or copied. The look of loading waits 200 ms.
@@ -178,6 +215,22 @@ function Data({
         onApply={setFilter}
         onRefresh={() => refreshAll(qc)}
         refreshing={q.isFetching}
+        extra={
+          fullPage && fullPage.columns.length > 1 ? (
+            <ColumnsMenu
+              columns={fullPage.columns.map((c) => ({
+                name: c.name,
+                sub: (
+                  columns?.find((i) => i.name === c.name)?.dataType ??
+                  c.typeName
+                ).toLowerCase(),
+              }))}
+              hidden={hidden}
+              pinned={pinnedNames}
+              onChange={setHidden}
+            />
+          ) : undefined
+        }
       />
     </>
   );
@@ -223,6 +276,7 @@ function Data({
   }
 
   const page = q.data;
+  const shown = shownPage ?? page;
   return (
     <>
       {bar}
@@ -231,7 +285,8 @@ function Data({
         key={`${offset}|${pageSize}|${filter}|${sort?.column}|${sort?.desc}`}
         schema={schema}
         table={table}
-        page={page}
+        page={shown}
+        hiddenCount={page.columns.length - shown.columns.length}
         info={new Map(columns?.map((c) => [c.name, c]))}
         filtered={filter !== ""}
         sort={sort}
@@ -247,7 +302,7 @@ function Data({
         onCancel={onCancel}
         onRetry={() => void q.refetch()}
         onOffset={setOffset}
-        linkFor={linkFor}
+        linkFor={(r, column) => linkFor(page.columns, page.rows[r], column)}
       />
     </>
   );
@@ -273,6 +328,7 @@ function DataGrid({
   onRetry,
   onOffset,
   linkFor,
+  hiddenCount,
 }: {
   schema: string;
   table: string;
@@ -297,11 +353,9 @@ function DataGrid({
   onRetry: () => void;
   onOffset: (offset: number) => void;
   /** Where a foreign-key value leads, if it does. */
-  linkFor: (
-    columns: readonly ResultColumn[],
-    row: readonly (string | null)[],
-    column: string,
-  ) => FkLink | null;
+  linkFor: (row: number, column: string) => FkLink | null;
+  /** Columns left out of this page by the Columns menu. */
+  hiddenCount: number;
 }) {
   const [open, setOpen] = useState<number | null>(null);
   // After a jump along a key, the row that was found opens on its own, once.
@@ -468,11 +522,7 @@ function DataGrid({
                       type={page.columns[i].typeName}
                       pin={pinOf(page.columns[i].name)}
                       name={page.columns[i].name}
-                      link={
-                        stale
-                          ? null
-                          : linkFor(page.columns, row, page.columns[i].name)
-                      }
+                      link={stale ? null : linkFor(r, page.columns[i].name)}
                       onOpenJson={() => {
                         if (stale) return;
                         setOpen(r);
@@ -597,7 +647,8 @@ function DataGrid({
           json={dialog.json}
           onMove={move}
           onJson={(json) => setDialog({ json })}
-          link={(column) => linkFor(page.columns, page.rows[open], column)}
+          link={(column) => linkFor(open, column)}
+          hiddenCount={hiddenCount}
           onClose={() => setDialog(null)}
         />
       )}

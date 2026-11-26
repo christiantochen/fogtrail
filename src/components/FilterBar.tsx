@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { CloseIcon, Refresh } from "./Icons";
 import { tokenClass, tokenize, HIGHLIGHT_LIMIT } from "../lib/sqlHighlight";
 import { sqlDialectOf, type SqlDialect } from "../lib/sql";
@@ -14,12 +14,15 @@ export function FilterBar({
   onApply,
   onRefresh,
   refreshing,
+  extra,
 }: {
   applied: string;
   onApply: (filter: string) => void;
   /** Reload the table, used by the button while the filter has nothing new to apply. */
   onRefresh: () => void;
   refreshing: boolean;
+  /** More controls after the Refresh button, such as the Columns menu. */
+  extra?: ReactNode;
 }) {
   const [draft, setDraft] = useState(applied);
   const colors = useRef<HTMLPreElement>(null);
@@ -104,6 +107,7 @@ export function FilterBar({
             <Refresh className={refreshing ? "spin" : undefined} /> Refresh
           </button>
         )}
+        {extra}
       </div>
     </form>
   );
