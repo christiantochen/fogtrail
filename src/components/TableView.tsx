@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Fragment, useRef, useState } from "react";
-import { useRows, useStructure } from "../api/queries";
+import { rowsKey, useRows, useStructure } from "../api/queries";
 import type {
   ColumnInfo,
   RowPage,
@@ -139,6 +139,12 @@ function Data({
   // and they are "stale": they can't be opened or copied. The look of loading waits 200 ms.
   const stale = q.isPlaceholderData;
   const loading = useDelayedFlag(q.isFetching, 200);
+  // A read stopped by the person leaves the rows from before on screen, not running.
+  const cancelled = q.isPlaceholderData && q.fetchStatus === "idle";
+  const onCancel = () =>
+    void qc.cancelQueries({
+      queryKey: rowsKey(schema, table, offset, view, pageSize),
+    });
   const bar = (
     <FilterBar
       key={table}
@@ -210,6 +216,9 @@ function Data({
         fetching={q.isFetching}
         stale={stale}
         loading={loading}
+        cancelled={cancelled}
+        onCancel={onCancel}
+        onRetry={() => void q.refetch()}
         onOffset={setOffset}
       />
     </>
@@ -231,6 +240,9 @@ function DataGrid({
   fetching,
   stale,
   loading,
+  cancelled,
+  onCancel,
+  onRetry,
   onOffset,
 }: {
   schema: string;
@@ -250,6 +262,10 @@ function DataGrid({
   stale: boolean;
   /** A load has been running long enough to show it. */
   loading: boolean;
+  /** The person stopped the load; these rows are from before it. */
+  cancelled: boolean;
+  onCancel: () => void;
+  onRetry: () => void;
   onOffset: (offset: number) => void;
 }) {
   const [open, setOpen] = useState<number | null>(null);
@@ -432,6 +448,8 @@ function DataGrid({
           <span>
             {loading ? (
               "Loading…"
+            ) : cancelled ? (
+              "Cancelled · showing the rows you had"
             ) : (
               <>
                 {filtered ? "Filtered · " : ""}
@@ -439,7 +457,7 @@ function DataGrid({
               </>
             )}
           </span>
-          {!loading && updatedAt > 0 && (
+          {!loading && !cancelled && updatedAt > 0 && (
             <span className="muted">· Updated {clockLabel(updatedAt)}</span>
           )}
           {live.length >= MAX_PINS && (
@@ -448,6 +466,20 @@ function DataGrid({
             </span>
           )}
           <span className="sqlfoot__spacer" />
+          {loading && (
+            <button
+              type="button"
+              className="btn btn--small btn--attention"
+              onClick={onCancel}
+            >
+              Cancel
+            </button>
+          )}
+          {cancelled && (
+            <button type="button" className="btn btn--small" onClick={onRetry}>
+              Try again
+            </button>
+          )}
           <span className="sqlfoot__size">
             <span className="muted">Rows</span>
             <Dropdown
@@ -471,7 +503,7 @@ function DataGrid({
           <button
             type="button"
             className="btn btn--small"
-            disabled={offset === 0 || fetching}
+            disabled={offset === 0 || fetching || stale}
             onClick={() => onOffset(Math.max(0, offset - pageSize))}
           >
             Previous
@@ -479,7 +511,7 @@ function DataGrid({
           <button
             type="button"
             className="btn btn--small"
-            disabled={!page.hasMore || fetching}
+            disabled={!page.hasMore || fetching || stale}
             onClick={() => onOffset(offset + pageSize)}
           >
             Next {pageSize}

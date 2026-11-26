@@ -272,6 +272,107 @@ test.describe("loading a new sort", () => {
     ).toBeVisible();
   });
 
+  const read = (page: Page) =>
+    page.evaluate(() => {
+      const w = window as unknown as {
+        __rowCalls?: { runId?: string }[];
+        __cancelled?: string[];
+      };
+      return {
+        ids: (w.__rowCalls ?? []).map((c) => c.runId),
+        cancelled: w.__cancelled ?? [],
+      };
+    });
+
+  test("Cancel stops a slow load on the server and keeps the rows you had", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    await slow(page, 3000);
+    await totalHead(page).click();
+    await expect(page.getByText("Loading…")).toBeVisible();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(
+      page.getByText("Cancelled · showing the rows you had"),
+    ).toBeVisible();
+    // No progress, the old rows are still there, and they cannot be paged from.
+    await expect(page.locator(".loadbar")).toHaveCount(0);
+    await expect(
+      page.getByRole("table", { name: "Rows of orders" }).locator("tbody tr"),
+    ).toHaveCount(3);
+    await expect(page.getByRole("button", { name: "Next 100" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Previous" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+    // The server was told to stop that very read.
+    const { ids, cancelled } = await read(page);
+    const sent = ids[ids.length - 1];
+    expect(sent).toMatch(/^rows-ui-/);
+    expect(cancelled).toEqual([sent]);
+  });
+
+  test("Try again repeats the read and clears the note", async ({ page }) => {
+    await openOrders(page);
+    await slow(page, 3000);
+    await totalHead(page).click();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByText(/^Cancelled/)).toBeVisible();
+    await slow(page, 0);
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect(page.getByText("Rows 1–3")).toBeVisible();
+    await expect(page.getByText(/^Cancelled/)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Cancel" })).toHaveCount(0);
+    const { ids } = await read(page);
+    // A new read, with a new id.
+    expect(new Set(ids.slice(-2)).size).toBe(2);
+  });
+
+  test("a load that finishes quickly offers no Cancel", async ({ page }) => {
+    await openOrders(page);
+    await totalHead(page).click();
+    await expect(page.getByText("Rows 1–3")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Cancel" })).toHaveCount(0);
+    expect((await read(page)).cancelled).toEqual([]);
+  });
+
+  test("leaving the table while it loads stops the read too", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    await slow(page, 3000);
+    await totalHead(page).click();
+    await expect(page.getByText("Loading…")).toBeVisible();
+    const { ids } = await read(page);
+    const sent = ids[ids.length - 1];
+    await slow(page, 0);
+    await page
+      .getByRole("list", { name: "Tables" })
+      .getByRole("button", { name: /^customers/ })
+      .click();
+    await expect.poll(async () => (await read(page)).cancelled).toContain(sent);
+  });
+
+  test("sorting again while a load runs stops the first read", async ({
+    page,
+  }) => {
+    await openOrders(page);
+    await slow(page, 3000);
+    await totalHead(page).click();
+    await expect(page.getByText("Loading…")).toBeVisible();
+    const first = (await read(page)).ids.at(-1);
+    await slow(page, 0);
+    await page
+      .getByRole("table", { name: "Rows of orders" })
+      .locator('thead th[data-col="id"] .sorthead')
+      .click();
+    await expect(page.getByText("Rows 1–3")).toBeVisible();
+    await expect
+      .poll(async () => (await read(page)).cancelled)
+      .toEqual([first]);
+    const { ids } = await read(page);
+    // The second read is a different one, and it was not cancelled.
+    expect(ids.at(-1)).not.toBe(first);
+  });
+
   test("a quick load shows nothing, so it does not flicker", async ({
     page,
   }) => {

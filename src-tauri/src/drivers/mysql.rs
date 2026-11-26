@@ -4,7 +4,6 @@
 //! server side; the README says how to make one.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -18,8 +17,8 @@ use sqlx::{MySqlPool, ValueRef};
 use tokio::sync::OnceCell;
 
 use super::{
-    ColumnInfo, ConnectionInfo, Driver, ForeignKeyInfo, IndexInfo, Probe, QueryResult,
-    ResultColumn, RowPage, RowView, SchemaInfo, SqlDriver, TableInfo, TableStructure,
+    ColumnInfo, ConnectionInfo, Driver, EarlyCancels, ForeignKeyInfo, IndexInfo, Probe,
+    QueryResult, ResultColumn, RowPage, RowView, SchemaInfo, SqlDriver, TableInfo, TableStructure,
 };
 use crate::error::AppError;
 use crate::profiles::Profile;
@@ -105,6 +104,8 @@ pub struct MySqlDriver {
     /// Statements in flight: the editor's run id and the server's connection id,
     /// so a cancel can send `KILL QUERY` to the right one.
     running: Arc<Mutex<HashMap<String, u64>>>,
+    /// Cancels that arrived before their statement did.
+    early: EarlyCancels,
     query_seconds: u64,
 }
 
@@ -116,6 +117,7 @@ impl MySqlDriver {
             address,
             pool: OnceCell::new(),
             running: Arc::new(Mutex::new(HashMap::new())),
+            early: EarlyCancels::default(),
             query_seconds: QUERY_SECONDS,
         }
     }
@@ -344,6 +346,7 @@ impl SqlDriver for MySqlDriver {
         offset: u64,
         count: u32,
         view: &RowView,
+        run_id: &str,
     ) -> Result<RowPage, AppError> {
         // Checked against the server's own list, so only real names are ever quoted into SQL.
         self.kind_of(schema, table).await?;
@@ -365,37 +368,17 @@ impl SqlDriver for MySqlDriver {
             || view.sort_column.is_some()
         {
             return self
-                .view_rows(schema, table, &pk, offset, count, view)
+                .view_rows(schema, table, &pk, (offset, count), view, run_id)
                 .await;
         }
         let sql = page_sql(schema, table, &pk, offset, count);
-        // `raw_sql` uses the text protocol, so every value arrives as text.
-        let rows = sqlx::raw_sql(&sql)
-            .fetch_all(pool)
-            .await
-            .map_err(|e| self.err(e))?;
-        let columns: Vec<ResultColumn> = rows
-            .first()
-            .map(|r| {
-                r.columns()
-                    .iter()
-                    .map(|c| ResultColumn {
-                        name: c.name().to_string(),
-                        type_name: c.type_info().name().to_string(),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        let has_more = rows.len() > count as usize;
-        let rows = rows
-            .iter()
-            .take(count as usize)
-            .map(|r| {
-                (0..r.len())
-                    .map(|i| cell(r, i, r.columns()[i].type_info().name()))
-                    .collect()
-            })
-            .collect();
+        // Read through `run_query`, so the page can be cancelled like any other statement.
+        // The text is built here from real names, and the guard still passes it.
+        let result = self.run_query(&sql, None, run_id).await?;
+        let has_more = result.rows.len() > count as usize;
+        let mut rows = result.rows;
+        rows.truncate(count as usize);
+        let columns = result.columns;
         // An empty page has no row to read the column names from, so ask for them.
         let columns = if columns.is_empty() {
             self.column_names(schema, table).await?
@@ -435,6 +418,10 @@ impl SqlDriver for MySqlDriver {
             .map_err(|e| self.err(e))
             .map(|r| r.try_get_unchecked::<u64, _>(0).unwrap_or(0))?;
         let _registered = Registered::new(&self.running, run_id, connection_id);
+        // Stopped while it was still being set up: don't start it.
+        if self.early.take(run_id) {
+            return Err(AppError::Sql("Stopped.".to_string()));
+        }
 
         let started = Instant::now();
         let read = read_rows(&mut conn, sql);
@@ -451,6 +438,12 @@ impl SqlDriver for MySqlDriver {
             Ok(v) => v,
             Err(e) => return Err(self.query_error(e)),
         };
+        // MySQL 8 can answer a killed statement with an empty result instead of an
+        // error (when the kill lands inside a subquery). A cancel that was asked for
+        // wins, so the screen never shows that as "no rows".
+        if self.early.take(run_id) {
+            return Err(AppError::Sql("Stopped.".to_string()));
+        }
         if truncated {
             // Stopped reading with rows still on the wire, so this connection can't be
             // reused. Detach it and let the pool open a fresh one.
@@ -466,6 +459,9 @@ impl SqlDriver for MySqlDriver {
     }
 
     async fn cancel_query(&self, run_id: &str) -> Result<(), AppError> {
+        // Noted first, so a statement that is just starting either sees the note
+        // before it runs or has already registered where the lookup below finds it.
+        self.early.request(run_id);
         let id = self
             .running
             .lock()
@@ -516,9 +512,9 @@ impl MySqlDriver {
         schema: &str,
         table: &str,
         pk: &[String],
-        offset: u64,
-        count: u32,
+        (offset, count): (u64, u32),
         view: &RowView,
+        run_id: &str,
     ) -> Result<RowPage, AppError> {
         // A sort column must be a real column, so only real names are ever quoted.
         let sort = match view.sort_column.as_deref() {
@@ -537,9 +533,7 @@ impl MySqlDriver {
             .map(str::trim)
             .filter(|f| !f.is_empty());
         let sql = view_sql(schema, table, pk, offset, count, filter, sort);
-        static NEXT: AtomicU64 = AtomicU64::new(1);
-        let run_id = format!("rows-{}", NEXT.fetch_add(1, Ordering::Relaxed));
-        let result = self.run_query(&sql, None, &run_id).await?;
+        let result = self.run_query(&sql, None, run_id).await?;
         let has_more = result.rows.len() > count as usize;
         let mut rows = result.rows;
         rows.truncate(count as usize);
@@ -577,6 +571,7 @@ impl MySqlDriver {
 struct Registered {
     running: Arc<Mutex<HashMap<String, u64>>>,
     run_id: String,
+    connection_id: u64,
 }
 
 impl Registered {
@@ -587,6 +582,7 @@ impl Registered {
         Self {
             running: Arc::clone(running),
             run_id: run_id.to_string(),
+            connection_id,
         }
     }
 }
@@ -594,7 +590,10 @@ impl Registered {
 impl Drop for Registered {
     fn drop(&mut self) {
         if let Ok(mut m) = self.running.lock() {
-            m.remove(&self.run_id);
+            // Only our own entry: a statement that reused the id keeps its own.
+            if m.get(&self.run_id) == Some(&self.connection_id) {
+                m.remove(&self.run_id);
+            }
         }
     }
 }
@@ -851,6 +850,18 @@ fn to_app_error(e: sqlx::Error, address: &str) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_finished_statement_does_not_unregister_one_that_reused_its_id() {
+        let running: Arc<Mutex<HashMap<String, u64>>> = Arc::new(Mutex::new(HashMap::new()));
+        let first = Registered::new(&running, "same", 1);
+        // A second statement takes over the id while the first is still registered.
+        let second = Registered::new(&running, "same", 2);
+        drop(first);
+        assert_eq!(running.lock().unwrap().get("same"), Some(&2));
+        drop(second);
+        assert!(running.lock().unwrap().is_empty());
+    }
 
     #[test]
     fn names_are_quoted_and_backticks_doubled() {

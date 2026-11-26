@@ -9,7 +9,6 @@
 //! calls a schema is a PostgreSQL schema (`public`, `billing`, ...).
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -20,8 +19,8 @@ use sqlx::{Column, Executor, PgPool, Row, TypeInfo, ValueRef};
 use tokio::sync::OnceCell;
 
 use super::{
-    ColumnInfo, ConnectionInfo, Driver, ForeignKeyInfo, IndexInfo, Probe, QueryResult,
-    ResultColumn, RowPage, RowView, SchemaInfo, SqlDriver, TableInfo, TableStructure,
+    ColumnInfo, ConnectionInfo, Driver, EarlyCancels, ForeignKeyInfo, IndexInfo, Probe,
+    QueryResult, ResultColumn, RowPage, RowView, SchemaInfo, SqlDriver, TableInfo, TableStructure,
 };
 use crate::error::AppError;
 use crate::profiles::Profile;
@@ -115,6 +114,8 @@ pub struct PostgresDriver {
     /// Statements in flight: the editor's run id and the server's process id, so a
     /// cancel can ask the right backend to stop.
     running: Arc<Mutex<HashMap<String, i32>>>,
+    /// Cancels that arrived before their statement did.
+    early: EarlyCancels,
     query_seconds: u64,
 }
 
@@ -126,6 +127,7 @@ impl PostgresDriver {
             address,
             pool: OnceCell::new(),
             running: Arc::new(Mutex::new(HashMap::new())),
+            early: EarlyCancels::default(),
             query_seconds: QUERY_SECONDS,
         }
     }
@@ -389,6 +391,7 @@ impl SqlDriver for PostgresDriver {
         offset: u64,
         count: u32,
         view: &RowView,
+        run_id: &str,
     ) -> Result<RowPage, AppError> {
         // Checked against the server's own list, so only real names are ever quoted into SQL.
         self.kind_of(schema, table).await?;
@@ -417,11 +420,9 @@ impl SqlDriver for PostgresDriver {
         } else {
             page_sql(schema, table, &pk, offset, count)
         };
-        static NEXT: AtomicU64 = AtomicU64::new(1);
-        let run_id = format!("rows-{}", NEXT.fetch_add(1, Ordering::Relaxed));
         // A typed filter goes through the guard along with the rest of the statement.
         // The statement without one is built here from real names only.
-        let result = self.run(&sql, None, &run_id, filtered).await?;
+        let result = self.run(&sql, None, run_id, filtered).await?;
         let has_more = result.rows.len() > count as usize;
         let mut rows = result.rows;
         rows.truncate(count as usize);
@@ -449,6 +450,9 @@ impl SqlDriver for PostgresDriver {
     }
 
     async fn cancel_query(&self, run_id: &str) -> Result<(), AppError> {
+        // Noted first, so a statement that is just starting either sees the note
+        // before it runs or has already registered where the lookup below finds it.
+        self.early.request(run_id);
         let pid = self
             .running
             .lock()
@@ -499,6 +503,11 @@ impl PostgresDriver {
             .map_err(|e| self.err(e))
             .map(|r| text(&r, 0).and_then(|p| p.parse().ok()).unwrap_or(0))?;
         let _registered = Registered::new(&self.running, run_id, pid);
+        // Stopped while it was still being set up: don't start it.
+        if self.early.take(run_id) {
+            let _ = conn.execute("ROLLBACK").await;
+            return Err(AppError::Sql("Stopped.".to_string()));
+        }
 
         let read = read_rows(&mut conn, sql);
         let outcome =
@@ -617,6 +626,7 @@ impl PostgresDriver {
 struct Registered {
     running: Arc<Mutex<HashMap<String, i32>>>,
     run_id: String,
+    pid: i32,
 }
 
 impl Registered {
@@ -627,6 +637,7 @@ impl Registered {
         Self {
             running: Arc::clone(running),
             run_id: run_id.to_string(),
+            pid,
         }
     }
 }
@@ -634,7 +645,10 @@ impl Registered {
 impl Drop for Registered {
     fn drop(&mut self) {
         if let Ok(mut m) = self.running.lock() {
-            m.remove(&self.run_id);
+            // Only our own entry: a statement that reused the id keeps its own.
+            if m.get(&self.run_id) == Some(&self.pid) {
+                m.remove(&self.run_id);
+            }
         }
     }
 }
@@ -884,6 +898,18 @@ fn to_app_error(e: sqlx::Error, address: &str) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_finished_statement_does_not_unregister_one_that_reused_its_id() {
+        let running: Arc<Mutex<HashMap<String, i32>>> = Arc::new(Mutex::new(HashMap::new()));
+        let first = Registered::new(&running, "same", 1);
+        // A second statement takes over the id while the first is still registered.
+        let second = Registered::new(&running, "same", 2);
+        drop(first);
+        assert_eq!(running.lock().unwrap().get("same"), Some(&2));
+        drop(second);
+        assert!(running.lock().unwrap().is_empty());
+    }
 
     #[test]
     fn names_are_quoted_and_double_quotes_doubled() {

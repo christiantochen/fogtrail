@@ -164,7 +164,7 @@ async fn a_view_says_it_is_a_view() {
 async fn rows_page_through_a_long_table() {
     let d = driver_or_skip!();
     let first = d
-        .table_rows("shop", "events", 0, 100, &RowView::default())
+        .table_rows("shop", "events", 0, 100, &RowView::default(), "rows-test")
         .await
         .unwrap();
     assert_eq!(first.rows.len(), 100);
@@ -174,7 +174,7 @@ async fn rows_page_through_a_long_table() {
     assert_eq!(first.rows[0][1].as_deref(), Some("tick"));
 
     let last = d
-        .table_rows("shop", "events", 200, 100, &RowView::default())
+        .table_rows("shop", "events", 200, 100, &RowView::default(), "rows-test")
         .await
         .unwrap();
     assert_eq!(last.rows.len(), 50);
@@ -190,10 +190,36 @@ fn filtered(filter: &str) -> RowView {
 }
 
 #[tokio::test]
+async fn an_unfiltered_page_reads_the_same_as_a_filtered_one() {
+    let d = driver_or_skip!();
+    // The unfiltered read goes through the same path as a filtered one; every column
+    // name, type and cell must come out identical.
+    for table in ["customers", "products", "orders"] {
+        let plain = d
+            .table_rows("shop", table, 0, 100, &RowView::default(), "same-a")
+            .await
+            .unwrap();
+        let all = d
+            .table_rows("shop", table, 0, 100, &filtered("1 = 1"), "same-b")
+            .await
+            .unwrap();
+        let cols = |p: &fogtrail_lib::drivers::RowPage| {
+            p.columns
+                .iter()
+                .map(|c| (c.name.clone(), c.type_name.clone()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(cols(&plain), cols(&all), "{table}: columns");
+        assert_eq!(plain.rows, all.rows, "{table}: cells");
+        assert_eq!(plain.has_more, all.has_more, "{table}: has_more");
+    }
+}
+
+#[tokio::test]
 async fn a_filter_narrows_the_rows_and_still_pages() {
     let d = driver_or_skip!();
     let few = d
-        .table_rows("shop", "events", 0, 100, &filtered("id > 240"))
+        .table_rows("shop", "events", 0, 100, &filtered("id > 240"), "rows-test")
         .await
         .unwrap();
     assert_eq!(few.rows.len(), 10);
@@ -202,13 +228,27 @@ async fn a_filter_narrows_the_rows_and_still_pages() {
 
     // 125 even ids: a full first page, with more behind it.
     let even = d
-        .table_rows("shop", "events", 0, 100, &filtered("id % 2 = 0"))
+        .table_rows(
+            "shop",
+            "events",
+            0,
+            100,
+            &filtered("id % 2 = 0"),
+            "rows-test",
+        )
         .await
         .unwrap();
     assert_eq!(even.rows.len(), 100);
     assert!(even.has_more);
     let rest = d
-        .table_rows("shop", "events", 100, 100, &filtered("id % 2 = 0"))
+        .table_rows(
+            "shop",
+            "events",
+            100,
+            100,
+            &filtered("id % 2 = 0"),
+            "rows-test",
+        )
         .await
         .unwrap();
     assert_eq!(rest.rows.len(), 25);
@@ -220,7 +260,7 @@ async fn a_trailing_comment_in_the_filter_cannot_eat_the_rest() {
     let d = driver_or_skip!();
     for filter in ["id > 248 -- the last two", "id > 248 # the last two"] {
         let page = d
-            .table_rows("shop", "events", 0, 100, &filtered(filter))
+            .table_rows("shop", "events", 0, 100, &filtered(filter), "rows-test")
             .await
             .unwrap();
         assert_eq!(page.rows.len(), 2, "filter: {filter}");
@@ -231,7 +271,7 @@ async fn a_trailing_comment_in_the_filter_cannot_eat_the_rest() {
 async fn a_filter_with_no_matches_still_has_column_names() {
     let d = driver_or_skip!();
     let page = d
-        .table_rows("shop", "events", 0, 100, &filtered("id < 0"))
+        .table_rows("shop", "events", 0, 100, &filtered("id < 0"), "rows-test")
         .await
         .unwrap();
     assert!(page.rows.is_empty());
@@ -247,7 +287,10 @@ async fn sorting_orders_the_whole_table_and_rejects_unknown_columns() {
         sort_desc: true,
         ..RowView::default()
     };
-    let page = d.table_rows("shop", "events", 0, 100, &view).await.unwrap();
+    let page = d
+        .table_rows("shop", "events", 0, 100, &view, "rows-test")
+        .await
+        .unwrap();
     assert_eq!(page.rows[0][0].as_deref(), Some("250"));
     assert_eq!(page.rows[1][0].as_deref(), Some("249"));
 
@@ -256,7 +299,7 @@ async fn sorting_orders_the_whole_table_and_rejects_unknown_columns() {
         ..RowView::default()
     };
     let err = d
-        .table_rows("shop", "events", 0, 100, &bad)
+        .table_rows("shop", "events", 0, 100, &bad, "rows-test")
         .await
         .unwrap_err();
     assert!(matches!(err, AppError::Sql(_)), "got {err:?}");
@@ -272,7 +315,7 @@ async fn a_filter_cannot_write_or_run_a_second_statement() {
         "1=1) INTO OUTFILE '/tmp/fogtrail-test' FROM events WHERE (1=1",
     ] {
         let err = d
-            .table_rows("shop", "events", 0, 100, &filtered(filter))
+            .table_rows("shop", "events", 0, 100, &filtered(filter), "rows-test")
             .await
             .unwrap_err();
         assert!(
@@ -282,7 +325,7 @@ async fn a_filter_cannot_write_or_run_a_second_statement() {
     }
     // Nothing was touched.
     let all = d
-        .table_rows("shop", "events", 0, 100, &RowView::default())
+        .table_rows("shop", "events", 0, 100, &RowView::default(), "rows-test")
         .await
         .unwrap();
     assert_eq!(all.rows.len(), 100);
@@ -293,7 +336,14 @@ async fn a_filter_cannot_write_or_run_a_second_statement() {
 async fn an_empty_page_still_has_column_names() {
     let d = driver_or_skip!();
     let page = d
-        .table_rows("shop", "events", 10_000, 100, &RowView::default())
+        .table_rows(
+            "shop",
+            "events",
+            10_000,
+            100,
+            &RowView::default(),
+            "rows-test",
+        )
         .await
         .unwrap();
     assert!(page.rows.is_empty());
@@ -306,7 +356,14 @@ async fn an_empty_page_still_has_column_names() {
 async fn null_and_empty_string_stay_different() {
     let d = driver_or_skip!();
     let page = d
-        .table_rows("shop", "customers", 0, 100, &RowView::default())
+        .table_rows(
+            "shop",
+            "customers",
+            0,
+            100,
+            &RowView::default(),
+            "rows-test",
+        )
         .await
         .unwrap();
     let col = |name: &str| page.columns.iter().position(|c| c.name == name).unwrap();
@@ -323,7 +380,7 @@ async fn null_and_empty_string_stay_different() {
 async fn other_column_types_arrive_readable() {
     let d = driver_or_skip!();
     let page = d
-        .table_rows("shop", "products", 0, 100, &RowView::default())
+        .table_rows("shop", "products", 0, 100, &RowView::default(), "rows-test")
         .await
         .unwrap();
     let col = |name: &str| page.columns.iter().position(|c| c.name == name).unwrap();
@@ -344,14 +401,28 @@ async fn other_column_types_arrive_readable() {
 async fn odd_table_names_and_tables_without_a_primary_key_work() {
     let d = driver_or_skip!();
     let weird = d
-        .table_rows("shop", "weird name", 0, 10, &RowView::default())
+        .table_rows(
+            "shop",
+            "weird name",
+            0,
+            10,
+            &RowView::default(),
+            "rows-test",
+        )
         .await
         .unwrap();
     assert_eq!(weird.columns[0].name, "select");
     assert_eq!(weird.columns[1].name, "back`tick");
     assert_eq!(weird.rows[0][1].as_deref(), Some("2"));
     let loose = d
-        .table_rows("shop", "loose_notes", 0, 10, &RowView::default())
+        .table_rows(
+            "shop",
+            "loose_notes",
+            0,
+            10,
+            &RowView::default(),
+            "rows-test",
+        )
         .await
         .unwrap();
     assert_eq!(loose.rows.len(), 2);
@@ -366,7 +437,7 @@ async fn names_that_are_not_real_tables_never_reach_the_sql() {
         "nope",
     ] {
         let err = d
-            .table_rows("shop", evil, 0, 10, &RowView::default())
+            .table_rows("shop", evil, 0, 10, &RowView::default(), "rows-test")
             .await
             .unwrap_err();
         assert!(
@@ -377,11 +448,18 @@ async fn names_that_are_not_real_tables_never_reach_the_sql() {
         assert!(matches!(err, AppError::InvalidArgument(_)));
     }
     assert_eq!(
-        d.table_rows("shop", "customers", 0, 100, &RowView::default())
-            .await
-            .unwrap()
-            .rows
-            .len(),
+        d.table_rows(
+            "shop",
+            "customers",
+            0,
+            100,
+            &RowView::default(),
+            "rows-test"
+        )
+        .await
+        .unwrap()
+        .rows
+        .len(),
         4
     );
 }
@@ -617,6 +695,101 @@ async fn a_running_query_can_be_cancelled() {
     }
     assert!(started.elapsed() < Duration::from_secs(5));
     assert!(run(&d, "SELECT 1").await.is_ok());
+}
+
+/// A filter that makes the page read slow: it needs 250^4 row combinations.
+const SLOW_FILTER: &str =
+    "(SELECT SUM(a.id * b.id + c.id * d.id) FROM events a, events b, events c, events d) > 0";
+
+#[tokio::test]
+async fn a_slow_page_read_can_be_cancelled() {
+    let Some(url) = url() else { return };
+    let d = Arc::new(MySqlDriver::new(
+        MySqlConnectOptions::from_str(&url).unwrap(),
+    ));
+    let running = {
+        let d = Arc::clone(&d);
+        tokio::spawn(async move {
+            d.table_rows(
+                "shop",
+                "events",
+                0,
+                100,
+                &filtered(SLOW_FILTER),
+                "page-slow",
+            )
+            .await
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    let started = Instant::now();
+    d.cancel_query("page-slow").await.unwrap();
+    match running.await.unwrap() {
+        Err(AppError::Sql(m)) => assert_eq!(m, "Stopped."),
+        other => panic!("unexpected outcome: {other:?}"),
+    }
+    assert!(started.elapsed() < Duration::from_secs(5));
+    // The same table reads fine afterwards, so nothing was left stuck.
+    let page = d
+        .table_rows("shop", "events", 0, 100, &RowView::default(), "page-after")
+        .await
+        .unwrap();
+    assert_eq!(page.rows.len(), 100);
+}
+
+#[tokio::test]
+async fn cancelling_a_page_that_already_finished_does_nothing() {
+    let d = driver_or_skip!();
+    d.table_rows("shop", "events", 0, 10, &RowView::default(), "page-done")
+        .await
+        .unwrap();
+    d.cancel_query("page-done").await.unwrap();
+    assert!(run(&d, "SELECT 1").await.is_ok());
+}
+
+#[tokio::test]
+async fn cancelling_one_page_leaves_another_running() {
+    let Some(url) = url() else { return };
+    let d = Arc::new(MySqlDriver::new(
+        MySqlConnectOptions::from_str(&url).unwrap(),
+    ));
+    let other = {
+        let d = Arc::clone(&d);
+        tokio::spawn(async move {
+            d.table_rows("shop", "events", 0, 100, &filtered(SLOW_FILTER), "page-b")
+                .await
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    // An id nobody is using stops nothing.
+    d.cancel_query("page-a").await.unwrap();
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(!other.is_finished());
+    d.cancel_query("page-b").await.unwrap();
+    match other.await.unwrap() {
+        Err(AppError::Sql(m)) => assert_eq!(m, "Stopped."),
+        other => panic!("unexpected outcome: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_cancel_that_arrives_before_the_read_starts_stops_it() {
+    let d = driver_or_skip!();
+    // The cancel wins the race: nothing is running under this id yet.
+    d.cancel_query("page-early").await.unwrap();
+    match d
+        .table_rows("shop", "events", 0, 100, &RowView::default(), "page-early")
+        .await
+    {
+        Err(AppError::Sql(m)) => assert_eq!(m, "Stopped."),
+        other => panic!("unexpected outcome: {other:?}"),
+    }
+    // The note is used up: the same id reads normally the next time.
+    let page = d
+        .table_rows("shop", "events", 0, 100, &RowView::default(), "page-early")
+        .await
+        .unwrap();
+    assert_eq!(page.rows.len(), 100);
 }
 
 #[tokio::test]

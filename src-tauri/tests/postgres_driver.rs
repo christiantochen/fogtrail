@@ -214,6 +214,7 @@ async fn an_unknown_table_is_refused_plainly() {
             0,
             10,
             &RowView::default(),
+            "rows-test",
         )
         .await
         .unwrap_err();
@@ -224,7 +225,7 @@ async fn an_unknown_table_is_refused_plainly() {
 async fn rows_page_through_a_long_table() {
     let d = driver_or_skip!();
     let first = d
-        .table_rows("public", "events", 0, 100, &RowView::default())
+        .table_rows("public", "events", 0, 100, &RowView::default(), "rows-test")
         .await
         .unwrap();
     assert_eq!(first.rows.len(), 100);
@@ -232,7 +233,14 @@ async fn rows_page_through_a_long_table() {
     assert_eq!(first.columns[0].name, "id");
     assert_eq!(first.rows[0][0].as_deref(), Some("1"));
     let last = d
-        .table_rows("public", "events", 200, 100, &RowView::default())
+        .table_rows(
+            "public",
+            "events",
+            200,
+            100,
+            &RowView::default(),
+            "rows-test",
+        )
         .await
         .unwrap();
     assert_eq!(last.rows.len(), 50);
@@ -251,13 +259,27 @@ fn filtered(filter: &str) -> RowView {
 async fn a_filter_narrows_the_rows_and_still_pages() {
     let d = driver_or_skip!();
     let few = d
-        .table_rows("public", "events", 0, 100, &filtered("id > 240"))
+        .table_rows(
+            "public",
+            "events",
+            0,
+            100,
+            &filtered("id > 240"),
+            "rows-test",
+        )
         .await
         .unwrap();
     assert_eq!(few.rows.len(), 10);
     assert!(!few.has_more);
     let even = d
-        .table_rows("public", "events", 0, 100, &filtered("id % 2 = 0"))
+        .table_rows(
+            "public",
+            "events",
+            0,
+            100,
+            &filtered("id % 2 = 0"),
+            "rows-test",
+        )
         .await
         .unwrap();
     assert_eq!(even.rows.len(), 100);
@@ -274,6 +296,7 @@ async fn a_trailing_comment_in_the_filter_cannot_eat_the_rest() {
             0,
             100,
             &filtered("id > 248 -- the last two"),
+            "rows-test",
         )
         .await
         .unwrap();
@@ -284,14 +307,21 @@ async fn a_trailing_comment_in_the_filter_cannot_eat_the_rest() {
 async fn a_filter_with_no_matches_still_has_column_names() {
     let d = driver_or_skip!();
     let page = d
-        .table_rows("public", "events", 0, 100, &filtered("id < 0"))
+        .table_rows("public", "events", 0, 100, &filtered("id < 0"), "rows-test")
         .await
         .unwrap();
     assert!(page.rows.is_empty());
     assert_eq!(page.columns[0].name, "id");
     assert!(page.columns.len() >= 2);
     let empty = d
-        .table_rows("public", "events", 10_000, 100, &RowView::default())
+        .table_rows(
+            "public",
+            "events",
+            10_000,
+            100,
+            &RowView::default(),
+            "rows-test",
+        )
         .await
         .unwrap();
     assert!(empty.rows.is_empty());
@@ -307,7 +337,7 @@ async fn sorting_orders_the_whole_table_and_rejects_unknown_columns() {
         ..RowView::default()
     };
     let page = d
-        .table_rows("public", "events", 0, 100, &view)
+        .table_rows("public", "events", 0, 100, &view, "rows-test")
         .await
         .unwrap();
     assert_eq!(page.rows[0][0].as_deref(), Some("250"));
@@ -316,7 +346,7 @@ async fn sorting_orders_the_whole_table_and_rejects_unknown_columns() {
         ..RowView::default()
     };
     let err = d
-        .table_rows("public", "events", 0, 100, &bad)
+        .table_rows("public", "events", 0, 100, &bad, "rows-test")
         .await
         .unwrap_err();
     assert!(matches!(err, AppError::Sql(_)), "got {err:?}");
@@ -332,7 +362,7 @@ async fn a_filter_cannot_write_or_run_a_second_statement() {
         "1=1) UNION SELECT pg_terminate_backend(1)::int, 'x', 'y' FROM events WHERE (1=1",
     ] {
         let err = d
-            .table_rows("public", "events", 0, 100, &filtered(filter))
+            .table_rows("public", "events", 0, 100, &filtered(filter), "rows-test")
             .await
             .unwrap_err();
         assert!(
@@ -341,7 +371,7 @@ async fn a_filter_cannot_write_or_run_a_second_statement() {
         );
     }
     let all = d
-        .table_rows("public", "events", 0, 100, &RowView::default())
+        .table_rows("public", "events", 0, 100, &RowView::default(), "rows-test")
         .await
         .unwrap();
     assert!(all.has_more);
@@ -351,7 +381,14 @@ async fn a_filter_cannot_write_or_run_a_second_statement() {
 async fn awkward_names_are_quoted() {
     let d = driver_or_skip!();
     let page = d
-        .table_rows("public", "Weird Name", 0, 100, &RowView::default())
+        .table_rows(
+            "public",
+            "Weird Name",
+            0,
+            100,
+            &RowView::default(),
+            "rows-test",
+        )
         .await
         .unwrap();
     assert!(!page.columns.is_empty());
@@ -363,7 +400,14 @@ async fn awkward_names_are_quoted() {
 async fn a_table_without_a_primary_key_still_pages() {
     let d = driver_or_skip!();
     let page = d
-        .table_rows("public", "loose_notes", 0, 100, &RowView::default())
+        .table_rows(
+            "public",
+            "loose_notes",
+            0,
+            100,
+            &RowView::default(),
+            "rows-test",
+        )
         .await
         .unwrap();
     assert_eq!(page.rows.len(), 2);
@@ -543,6 +587,118 @@ async fn a_running_query_can_be_cancelled() {
     }
     assert!(started.elapsed() < Duration::from_secs(5));
     assert!(run(&d, "SELECT 1").await.is_ok());
+}
+
+/// A filter that makes the page read slow: it needs 250^4 row combinations.
+const SLOW_FILTER: &str =
+    "(SELECT SUM(a.id * b.id + c.id * e.id) FROM events a, events b, events c, events e) > 0";
+
+#[tokio::test]
+async fn a_slow_page_read_can_be_cancelled() {
+    let Some(url) = url() else { return };
+    let d = Arc::new(PostgresDriver::new(opts(&url)));
+    let running = {
+        let d = Arc::clone(&d);
+        tokio::spawn(async move {
+            d.table_rows(
+                "public",
+                "events",
+                0,
+                100,
+                &filtered(SLOW_FILTER),
+                "page-slow",
+            )
+            .await
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    let started = Instant::now();
+    d.cancel_query("page-slow").await.unwrap();
+    match running.await.unwrap() {
+        Err(AppError::Sql(m)) => assert_eq!(m, "Stopped."),
+        other => panic!("unexpected outcome: {other:?}"),
+    }
+    assert!(started.elapsed() < Duration::from_secs(5));
+    // The same table reads fine afterwards, so nothing was left stuck.
+    let page = d
+        .table_rows(
+            "public",
+            "events",
+            0,
+            100,
+            &RowView::default(),
+            "page-after",
+        )
+        .await
+        .unwrap();
+    assert_eq!(page.rows.len(), 100);
+}
+
+#[tokio::test]
+async fn cancelling_a_page_that_already_finished_does_nothing() {
+    let d = driver_or_skip!();
+    d.table_rows("public", "events", 0, 10, &RowView::default(), "page-done")
+        .await
+        .unwrap();
+    d.cancel_query("page-done").await.unwrap();
+    assert!(run(&d, "SELECT 1").await.is_ok());
+}
+
+#[tokio::test]
+async fn cancelling_one_page_leaves_another_running() {
+    let Some(url) = url() else { return };
+    let d = Arc::new(PostgresDriver::new(opts(&url)));
+    let other = {
+        let d = Arc::clone(&d);
+        tokio::spawn(async move {
+            d.table_rows("public", "events", 0, 100, &filtered(SLOW_FILTER), "page-b")
+                .await
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    // An id nobody is using stops nothing.
+    d.cancel_query("page-a").await.unwrap();
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(!other.is_finished());
+    d.cancel_query("page-b").await.unwrap();
+    match other.await.unwrap() {
+        Err(AppError::Sql(m)) => assert_eq!(m, "Stopped."),
+        other => panic!("unexpected outcome: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_cancel_that_arrives_before_the_read_starts_stops_it() {
+    let d = driver_or_skip!();
+    // The cancel wins the race: nothing is running under this id yet.
+    d.cancel_query("page-early").await.unwrap();
+    match d
+        .table_rows(
+            "public",
+            "events",
+            0,
+            100,
+            &RowView::default(),
+            "page-early",
+        )
+        .await
+    {
+        Err(AppError::Sql(m)) => assert_eq!(m, "Stopped."),
+        other => panic!("unexpected outcome: {other:?}"),
+    }
+    // The note is used up: the same id reads normally the next time.
+    let page = d
+        .table_rows(
+            "public",
+            "events",
+            0,
+            100,
+            &RowView::default(),
+            "page-early",
+        )
+        .await
+        .unwrap();
+    assert_eq!(page.rows.len(), 100);
 }
 
 #[tokio::test]

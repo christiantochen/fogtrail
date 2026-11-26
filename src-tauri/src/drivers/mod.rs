@@ -6,12 +6,58 @@ pub mod mysql;
 pub mod postgres;
 pub mod redis;
 
-use std::sync::Arc;
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
+
+/// Cancels that came in before the statement they were meant for was running.
+///
+/// The screen asks to stop a read by its id, and over a slow link that can arrive
+/// while the driver is still looking up the table, before the statement has an id the
+/// server knows. Remembering such an id a moment lets the statement refuse to start.
+/// Longest run id kept in memory. The screen's own ids are UUIDs (36 characters).
+pub const MAX_RUN_ID: usize = 128;
+
+#[derive(Default)]
+pub struct EarlyCancels(Mutex<VecDeque<String>>);
+
+impl EarlyCancels {
+    /// Ids come from the screen as UUIDs and are never reused, so a note for one that
+    /// has already finished stays harmless until it falls off the end of the list.
+    ///
+    /// Few enough that an id nobody comes back for cannot pile up.
+    const KEEP: usize = 64;
+
+    pub fn request(&self, run_id: &str) {
+        if run_id.len() > MAX_RUN_ID {
+            return;
+        }
+        if let Ok(mut ids) = self.0.lock() {
+            if ids.len() == Self::KEEP {
+                ids.pop_front();
+            }
+            ids.push_back(run_id.to_string());
+        }
+    }
+
+    /// True once if this id was cancelled before it started; the note is then used up.
+    pub fn take(&self, run_id: &str) -> bool {
+        let Ok(mut ids) = self.0.lock() else {
+            return false;
+        };
+        match ids.iter().position(|i| i == run_id) {
+            Some(at) => {
+                ids.remove(at);
+                true
+            }
+            None => false,
+        }
+    }
+}
 
 /// What the UI shows about the current connection.
 #[derive(Debug, Clone, Serialize)]
@@ -346,6 +392,7 @@ pub trait SqlDriver: Driver {
     async fn list_schemas(&self) -> Result<Vec<SchemaInfo>, AppError>;
     async fn list_tables(&self, schema: &str) -> Result<Vec<TableInfo>, AppError>;
     async fn table_structure(&self, schema: &str, table: &str) -> Result<TableStructure, AppError>;
+    /// `run_id` lets `cancel_query` stop the read while it runs, as for `run_query`.
     async fn table_rows(
         &self,
         schema: &str,
@@ -353,6 +400,7 @@ pub trait SqlDriver: Driver {
         offset: u64,
         count: u32,
         view: &RowView,
+        run_id: &str,
     ) -> Result<RowPage, AppError>;
     /// Runs one read-only statement typed by the person. The statement is checked
     /// by `sql_guard` first. `schema` is the database unqualified names refer to;
@@ -365,4 +413,55 @@ pub trait SqlDriver: Driver {
     ) -> Result<QueryResult, AppError>;
     /// Stops the statement started with this `run_id`. Does nothing if it has finished.
     async fn cancel_query(&self, run_id: &str) -> Result<(), AppError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_cancel_is_used_once() {
+        let book = EarlyCancels::default();
+        book.request("a");
+        assert!(book.take("a"));
+        assert!(!book.take("a"));
+    }
+
+    #[test]
+    fn an_id_nobody_cancelled_is_not_stopped() {
+        let book = EarlyCancels::default();
+        book.request("a");
+        assert!(!book.take("b"));
+        assert!(book.take("a"));
+    }
+
+    #[test]
+    fn asking_twice_for_the_same_id_stops_it_twice() {
+        let book = EarlyCancels::default();
+        book.request("a");
+        book.request("a");
+        assert!(book.take("a"));
+        assert!(book.take("a"));
+        assert!(!book.take("a"));
+    }
+
+    #[test]
+    fn an_oversized_id_is_not_kept() {
+        let book = EarlyCancels::default();
+        let long = "x".repeat(MAX_RUN_ID + 1);
+        book.request(&long);
+        assert!(!book.take(&long));
+    }
+
+    #[test]
+    fn only_the_newest_few_are_kept() {
+        let book = EarlyCancels::default();
+        for i in 0..EarlyCancels::KEEP + 1 {
+            book.request(&format!("id-{i}"));
+        }
+        // The first one fell off the end; the rest are still there.
+        assert!(!book.take("id-0"));
+        assert!(book.take("id-1"));
+        assert!(book.take(&format!("id-{}", EarlyCancels::KEEP)));
+    }
 }
