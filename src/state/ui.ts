@@ -58,6 +58,16 @@ function remember(
 /** The tabs of an open table. Indexes is for PostgreSQL. */
 export type SqlTab = "data" | "structure" | "indexes";
 
+/** The place a foreign-key jump left, for the Back button. */
+export interface BackTarget {
+  schema: string;
+  table: string;
+  offset: number;
+  filter: string;
+  sort: { column: string; desc: boolean } | null;
+  seq: number;
+}
+
 interface UiState {
   /** What splits key names into folders. Empty means a flat list. */
   delimiter: string;
@@ -107,6 +117,17 @@ interface UiState {
   selectTable: (table: string | null) => void;
   /** Open a table of any schema, as quick open does. */
   openTable: (schema: string, table: string) => void;
+  /**
+   * Go to the row a foreign key points at: the referenced table, filtered to that row. The place
+   * left behind is kept for one step back.
+   */
+  followForeignKey: (schema: string, table: string, filter: string) => void;
+  /** Where "Back to <table>" goes; null when there is no such button. */
+  sqlBack: BackTarget | null;
+  /** The table was just opened by following a key, so its row should open once it loads. */
+  sqlLanded: boolean;
+  clearLanded: () => void;
+  goBack: () => void;
   recentTables: RecentTable[];
   setSqlTab: (tab: SqlTab) => void;
   setSqlOffset: (offset: number) => void;
@@ -258,6 +279,8 @@ export const useUi = create<UiState>((set) => ({
       sqlFilter: "",
       sqlSort: null,
       sqlPinned: [],
+      sqlBack: null,
+      sqlLanded: false,
     }),
   // Picking a table, or going back up to the database, leaves the editor.
   selectTable: (sqlTable) =>
@@ -268,6 +291,8 @@ export const useUi = create<UiState>((set) => ({
       sqlFilter: "",
       sqlSort: null,
       sqlPinned: [],
+      sqlBack: null,
+      sqlLanded: false,
       sqlQueryOpen: false,
       recentTables:
         sqlTable && s.sqlSchema
@@ -283,15 +308,70 @@ export const useUi = create<UiState>((set) => ({
       sqlFilter: "",
       sqlSort: null,
       sqlPinned: [],
+      sqlBack: null,
+      sqlLanded: false,
       sqlQueryOpen: false,
       recentTables: rememberTable(s, { schema, table }),
     })),
+  sqlBack: null,
+  sqlLanded: false,
+  clearLanded: () => set({ sqlLanded: false }),
+  followForeignKey: (schema, table, filter) =>
+    set((s) =>
+      s.sqlSchema && s.sqlTable
+        ? {
+            sqlBack: {
+              schema: s.sqlSchema,
+              table: s.sqlTable,
+              offset: s.sqlOffset,
+              filter: s.sqlFilter,
+              sort: s.sqlSort,
+              // A new number for every jump, so the filter box starts again from the filter.
+              seq: (s.sqlBack?.seq ?? 0) + 1,
+            },
+            sqlLanded: true,
+            sqlSchema: schema,
+            sqlTable: table,
+            sqlTab: "data",
+            sqlOffset: 0,
+            sqlFilter: filter,
+            sqlSort: null,
+            sqlPinned: [],
+            sqlQueryOpen: false,
+            recentTables: rememberTable(s, { schema, table }),
+          }
+        : {},
+    ),
+  goBack: () =>
+    set((s) =>
+      s.sqlBack
+        ? {
+            sqlSchema: s.sqlBack.schema,
+            sqlTable: s.sqlBack.table,
+            sqlTab: "data",
+            sqlOffset: s.sqlBack.offset,
+            sqlFilter: s.sqlBack.filter,
+            sqlSort: s.sqlBack.sort,
+            sqlPinned: [],
+            sqlBack: null,
+            sqlLanded: false,
+          }
+        : {},
+    ),
   setSqlTab: (sqlTab) => set({ sqlTab }),
   jsonView: "formatted",
   setJsonView: (jsonView) => set({ jsonView }),
-  setSqlOffset: (sqlOffset) => set({ sqlOffset: Math.max(0, sqlOffset) }),
-  setSqlFilter: (sqlFilter) => set({ sqlFilter, sqlOffset: 0 }),
-  setSqlSort: (sqlSort) => set({ sqlSort, sqlOffset: 0 }),
+  setSqlOffset: (sqlOffset) =>
+    set({ sqlOffset: Math.max(0, sqlOffset), sqlLanded: false }),
+  // Clearing the filter ends the jump: the button goes with it.
+  setSqlFilter: (sqlFilter) =>
+    set((s) => ({
+      sqlFilter,
+      sqlOffset: 0,
+      sqlBack: sqlFilter === "" ? null : s.sqlBack,
+      sqlLanded: false,
+    })),
+  setSqlSort: (sqlSort) => set({ sqlSort, sqlOffset: 0, sqlLanded: false }),
   togglePinnedColumn: (column) =>
     set((s) => ({ sqlPinned: toggleColumnPin(s.sqlPinned, column) })),
   kindFilter: null,
@@ -322,6 +402,8 @@ export const useUi = create<UiState>((set) => ({
         sqlFilter: "",
         sqlSort: null,
         sqlPinned: [],
+        sqlBack: null,
+        sqlLanded: false,
         sqlQueryOpen: false,
         sqlText: "",
         kindFilter: null,
