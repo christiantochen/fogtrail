@@ -438,6 +438,12 @@ impl SqlDriver for MySqlDriver {
             Ok(v) => v,
             Err(e) => return Err(self.query_error(e)),
         };
+        // MySQL 8 can answer a killed statement with an empty result instead of an
+        // error (when the kill lands inside a subquery). A cancel that was asked for
+        // wins, so the screen never shows that as "no rows".
+        if self.early.take(run_id) {
+            return Err(AppError::Sql("Stopped.".to_string()));
+        }
         if truncated {
             // Stopped reading with rows still on the wire, so this connection can't be
             // reused. Detach it and let the pool open a fresh one.
